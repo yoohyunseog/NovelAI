@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BIT_MAX / BIT_MIN 실시간 계산</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 24px; }
+        .row { margin-bottom: 16px; }
+        label { display: block; margin-bottom: 8px; font-weight: bold; }
+        input[type="text"] { width: 100%; padding: 10px; font-size: 16px; }
+        .result { display: flex; gap: 16px; flex-wrap: wrap; }
+        .card { border: 1px solid #ddd; border-radius: 8px; padding: 12px 16px; min-width: 220px; }
+        .value { font-size: 24px; font-weight: bold; margin-top: 8px; }
+        .muted { color: #666; font-size: 12px; }
+        .controls { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-top: 8px; }
+        button { padding: 8px 12px; border: 1px solid #bbb; background: #f7f7f7; border-radius: 6px; cursor: pointer; }
+        button:hover { background: #eee; }
+        .history { margin-top: 16px; }
+        details summary { cursor: pointer; user-select: none; }
+        table { border-collapse: collapse; width: 100%; }
+        th, td { border: 1px solid #e5e5e5; padding: 6px 8px; text-align: left; font-size: 12px; }
+        th { background: #fafafa; }
+    </style>
+    <script src="https://xn--9l4b4xi9r.com/_8%EB%B9%84%ED%8A%B8/js/bitCalculation.js" defer></script>
+</head>
+<body>
+    <div class="row">
+        <label for="textInput">문자를 입력하세요 (입력 시 실시간 계산)</label>
+        <input id="textInput" type="text" placeholder="예) 안녕하세요 Hello 123" autocomplete="off" />
+        <div class="controls">
+            <label><input type="checkbox" id="autoSaveToggle" checked /> 자동 저장</label>
+            <button id="exportBtn">내보내기(JSON)</button>
+            <button id="clearBtn">기록 비우기</button>
+            <span class="muted" id="historyInfo"></span>
+        </div>
+    </div>
+
+    <div class="result">
+        <div class="card">
+            <div>BIT_MAX</div>
+            <div id="bitMax" class="value">-</div>
+            <div class="muted" id="bitMaxMeta"></div>
+        </div>
+        <div class="card">
+            <div>BIT_MIN</div>
+            <div id="bitMin" class="value">-</div>
+            <div class="muted" id="bitMinMeta"></div>
+        </div>
+        <div class="card">
+            <div>예측 NEXT_MAX</div>
+            <div id="predMax" class="value">-</div>
+            <div class="muted" id="predMaxMeta">최근 추세 기반</div>
+        </div>
+        <div class="card">
+            <div>예측 NEXT_MIN</div>
+            <div id="predMin" class="value">-</div>
+            <div class="muted" id="predMinMeta">최근 추세 기반</div>
+        </div>
+    </div>
+
+    
+
+    <div class="history">
+        <details>
+            <summary>기록 보기</summary>
+            <div style="margin-top:8px">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>시간</th>
+                            <th>입력</th>
+                            <th>ASCII_CODES</th>
+                            <th>BIT_MAX</th>
+                            <th>BIT_MIN</th>
+                        </tr>
+                    </thead>
+                    <tbody id="historyBody"></tbody>
+                </table>
+            </div>
+        </details>
+    </div>
+
+    <script>
+    // ===== 외부 스크립트 우선 사용, 없으면 로컬 구현으로 폴백 =====
+    (function(){
+      if (typeof window.BIT_MAX_NB === 'undefined') {
+        const initializeArrays = function(count) {
+          const arrays = ['BIT_START_A50', 'BIT_START_A100', 'BIT_START_B50', 'BIT_START_B100', 'BIT_START_NBA100'];
+          const initializedArrays = {};
+          arrays.forEach(array => {
+            initializedArrays[array] = new Array(count).fill(0);
+          });
+          return initializedArrays;
+        };
+
+        const calculateBit = function(nb, bit = 5.5, reverse = false) {
+          if (nb.length < 2) {
+            return bit / 100;
+          }
+          const BIT_NB = bit;
+          const max = Math.max(...nb);
+          const min = Math.min(...nb);
+          const COUNT = 50;
+          const CONT = 20;
+          const range = max - min;
+          const negativeRange = min < 0 ? Math.abs(min) : 0;
+          const positiveRange = max > 0 ? max : 0;
+          const negativeIncrement = negativeRange / (COUNT * nb.length - 1);
+          const positiveIncrement = positiveRange / (COUNT * nb.length - 1);
+          const arrays = initializeArrays(COUNT * nb.length);
+          let count = 0;
+          let totalSum = 0;
+          for (let value of nb) {
+            for (let i = 0; i < COUNT; i++) {
+              const BIT_END = 1;
+              const A50 = value < 0 ? min + negativeIncrement * (count + 1)
+                                    : min + positiveIncrement * (count + 1);
+              const A100 = (count + 1) * BIT_NB / (COUNT * nb.length);
+              const B50 = value < 0 ? A50 - negativeIncrement * 2 : A50 - positiveIncrement * 2;
+              const B100 = value < 0 ? A50 + negativeIncrement : A50 + positiveIncrement;
+              const NBA100 = A100 / (nb.length - 1);
+              arrays.BIT_START_A50[count] = A50;
+              arrays.BIT_START_A100[count] = A100;
+              arrays.BIT_START_B50[count] = B50;
+              arrays.BIT_START_B100[count] = B100;
+              arrays.BIT_START_NBA100[count] = NBA100;
+              count++;
+            }
+            totalSum += value;
+          }
+          if (reverse) {
+            arrays.BIT_START_NBA100.reverse();
+          }
+          let NB50 = 0;
+          for (let value of nb) {
+            for (let a = 0; a < arrays.BIT_START_NBA100.length; a++) {
+              if (arrays.BIT_START_B50[a] <= value && arrays.BIT_START_B100[a] >= value) {
+                NB50 += arrays.BIT_START_NBA100[Math.min(a, arrays.BIT_START_NBA100.length - 1)];
+                break;
+              }
+            }
+          }
+          if (nb.length === 2) {
+            return bit - NB50;
+          }
+          return NB50;
+        };
+
+        let SUPER_BIT = 0;
+        const updateSuperBit = function(newValue) { SUPER_BIT = newValue; };
+        const BIT_MAX_NB = function(nb, bit = 5.5) {
+          let result = calculateBit(nb, bit, false);
+          if (!isFinite(result) || isNaN(result) || result > 100 || result < -100) {
+            return SUPER_BIT;
+          } else {
+            updateSuperBit(result);
+            return result;
+          }
+        };
+        const BIT_MIN_NB = function(nb, bit = 5.5) {
+          let result = calculateBit(nb, bit, true);
+          if (!isFinite(result) || isNaN(result) || result > 100 || result < -100) {
+            return SUPER_BIT;
+          } else {
+            updateSuperBit(result);
+            return result;
+          }
+        };
+
+        // expose to window
+        window.initializeArrays = initializeArrays;
+        window.calculateBit = calculateBit;
+        window.BIT_MAX_NB = BIT_MAX_NB;
+        window.BIT_MIN_NB = BIT_MIN_NB;
+      }
+    })();
+
+    // ===== COUNT 200 오버라이드 =====
+    (function(){
+      const COUNT = 200;
+      function ensureInit(len){
+        if (typeof window.initializeArrays === 'function') return window.initializeArrays(len);
+        return {
+          BIT_START_A50: new Array(len).fill(0),
+          BIT_START_A100: new Array(len).fill(0),
+          BIT_START_B50: new Array(len).fill(0),
+          BIT_START_B100: new Array(len).fill(0),
+          BIT_START_NBA100: new Array(len).fill(0),
+        };
+      }
+      function calculateBitOverride(nb, bit = 5.5, reverse = false) {
+        if (!nb || nb.length < 2) return bit / 100;
+        const BIT_NB = bit;
+        const max = Math.max(...nb);
+        const min = Math.min(...nb);
+        const negativeRange = min < 0 ? Math.abs(min) : 0;
+        const positiveRange = max > 0 ? max : 0;
+        const negativeIncrement = negativeRange / (COUNT * nb.length - 1);
+        const positiveIncrement = positiveRange / (COUNT * nb.length - 1);
+        const arrays = ensureInit(COUNT * nb.length);
+        let count = 0;
+        for (let value of nb) {
+          for (let i = 0; i < COUNT; i++) {
+            const BIT_END = 1;
+            const A50 = value < 0 ? min + negativeIncrement * (count + 1)
+                                  : min + positiveIncrement * (count + 1);
+            const A100 = (count + 1) * BIT_NB / (COUNT * nb.length);
+            const B50 = value < 0 ? A50 - negativeIncrement * 2 : A50 - positiveIncrement * 2;
+            const B100 = value < 0 ? A50 + negativeIncrement : A50 + positiveIncrement;
+            const NBA100 = A100 / (nb.length - BIT_END);
+            arrays.BIT_START_A50[count] = A50;
+            arrays.BIT_START_A100[count] = A100;
+            arrays.BIT_START_B50[count] = B50;
+            arrays.BIT_START_B100[count] = B100;
+            arrays.BIT_START_NBA100[count] = NBA100;
+            count++;
+          }
+        }
+        if (reverse) arrays.BIT_START_NBA100.reverse();
+        let NB50 = 0;
+        for (let value of nb) {
+          for (let a = 0; a < arrays.BIT_START_NBA100.length; a++) {
+            if (arrays.BIT_START_B50[a] <= value && arrays.BIT_START_B100[a] >= value) {
+              NB50 += arrays.BIT_START_NBA100[Math.min(a, arrays.BIT_START_NBA100.length - 1)];
+              break;
+            }
+          }
+        }
+        if (nb.length === 2) return bit - NB50;
+        return NB50;
+      }
+      function updateSuperBit(v){ try { window.SUPER_BIT = v; } catch(e) {} }
+      window.BIT_MAX_NB = function(nb, bit = 5.5){
+        const result = calculateBitOverride(nb, bit, false);
+        if (!isFinite(result) || isNaN(result) || result > 100 || result < -100) {
+          return window.SUPER_BIT || 0;
+        }
+        updateSuperBit(result);
+        return result;
+      };
+      window.BIT_MIN_NB = function(nb, bit = 5.5){
+        const result = calculateBitOverride(nb, bit, true);
+        if (!isFinite(result) || isNaN(result) || result > 100 || result < -100) {
+          return window.SUPER_BIT || 0;
+        }
+        updateSuperBit(result);
+        return result;
+      };
+    })();
+
+    if (typeof window.wordNbUnicodeFormat !== 'function') {
+    function wordNbUnicodeFormat(domain) {
+      const defaultPrefix = '';
+      if (!domain || domain.length === 0) {
+        domain = defaultPrefix;
+      } else {
+        domain = defaultPrefix + domain;
+      }
+      const chars = Array.from(domain);
+      const langRanges = [
+        { range: [0xAC00, 0xD7AF], prefix: 1000000 },
+        { range: [0x3040, 0x309F], prefix: 2000000 },
+        { range: [0x30A0, 0x30FF], prefix: 3000000 },
+        { range: [0x4E00, 0x9FFF], prefix: 4000000 },
+        { range: [0x0410, 0x044F], prefix: 5000000 },
+        { range: [0x0041, 0x007A], prefix: 6000000 },
+        { range: [0x0590, 0x05FF], prefix: 7000000 },
+        { range: [0x00C0, 0x00FD], prefix: 8000000 },
+        { range: [0x0E00, 0x0E7F], prefix: 9000000 },
+      ];
+      return chars.map(char => {
+        const unicodeValue = char.codePointAt(0);
+        const lang = langRanges.find(lang =>
+          unicodeValue >= lang.range[0] && unicodeValue <= lang.range[1]
+        );
+        const prefix = lang ? lang.prefix : 0;
+        return prefix + unicodeValue;
+      });
+    }
+    window.wordNbUnicodeFormat = wordNbUnicodeFormat;
+    }
+
+    // ===== UI 연결 =====
+    const $input = document.getElementById('textInput');
+    const $bitMax = document.getElementById('bitMax');
+    const $bitMin = document.getElementById('bitMin');
+    const $bitMaxMeta = document.getElementById('bitMaxMeta');
+    const $bitMinMeta = document.getElementById('bitMinMeta');
+    const $predMax = document.getElementById('predMax');
+    const $predMin = document.getElementById('predMin');
+    const $predMaxMeta = document.getElementById('predMaxMeta');
+    const $predMinMeta = document.getElementById('predMinMeta');
+    const $autoSave = document.getElementById('autoSaveToggle');
+    const $exportBtn = document.getElementById('exportBtn');
+    const $clearBtn = document.getElementById('clearBtn');
+    const $historyInfo = document.getElementById('historyInfo');
+    const $historyBody = document.getElementById('historyBody');
+    
+
+    // LocalStorage 제거: 세션 히스토리만 유지, 영속 저장은 파일에만 수행
+    const sessionHistory = [];
+    const DECIMALS = 15;
+    const fmt = (v) => Number(v).toFixed(DECIMALS);
+    const SETTINGS_KEY = 'bitui:settings';
+    const DB_NAME = 'bitui';
+    const DB_STORE = 'fsHandles';
+    const DB_KEY_HISTORY = 'historyFile';
+    const DB_HIST_NAME = 'bituiHist';
+    const DB_HIST_STORE = 'records';
+
+    
+
+    // ===== IndexedDB helpers for persisting file handle =====
+    function idbOpen() { return Promise.resolve(null); }
+    async function idbPutHandle() { return; }
+    async function idbGetHandle() { return null; }
+
+    // ===== IndexedDB history (no file permission needed) =====
+    function idbHistOpen() { return Promise.resolve(null); }
+    async function idbHistAdd() { return; }
+    async function idbHistClear() { return; }
+    async function idbHistLoadAll() { return []; }
+
+    // ===== Reload history from file on startup =====
+    
+
+    function asciiCodesFromString(str) {
+      if (!str) return [];
+      const chars = Array.from(str);
+      const codes = [];
+      for (const ch of chars) {
+        const cp = ch.codePointAt(0);
+        codes.push(cp);
+      }
+      return codes;
+    }
+
+    function renderHistoryInfo(history) {
+      $historyInfo.textContent = `기록 ${history.length}개`;
+    }
+
+    function renderHistoryTable(history) {
+      $historyBody.innerHTML = '';
+      const count = Math.min(history.length, 200); // 최근 200개만 표시
+      for (let r = 0; r < count; r++) {
+        const h = history[history.length - 1 - r]; // 최신부터 역순
+        const tr = document.createElement('tr');
+        const idxTd = document.createElement('td'); idxTd.textContent = String(r + 1); // 최신이 1번
+        const tTd = document.createElement('td'); tTd.textContent = new Date(h.t).toLocaleString();
+        const sTd = document.createElement('td'); sTd.textContent = h.s;
+        const asciiTd = document.createElement('td');
+        const asciiList = Array.isArray(h.ascii) ? h.ascii : [];
+        const fullAscii = `[${asciiList.join(', ')}]`;
+        const shortAscii = asciiList.length > 30 ? `[${asciiList.slice(0,30).join(', ')} ...]` : fullAscii;
+        asciiTd.textContent = shortAscii;
+        asciiTd.title = fullAscii;
+        const maxTd = document.createElement('td'); maxTd.textContent = fmt(h.max);
+        const minTd = document.createElement('td'); minTd.textContent = fmt(h.min);
+        tr.appendChild(idxTd); tr.appendChild(tTd); tr.appendChild(sTd); tr.appendChild(asciiTd); tr.appendChild(maxTd); tr.appendChild(minTd);
+        $historyBody.appendChild(tr);
+      }
+    }
+
+    function appendHistoryRow(h, indexOneBased) {
+      const tr = document.createElement('tr');
+      const idxTd = document.createElement('td'); idxTd.textContent = String(indexOneBased);
+      const tTd = document.createElement('td'); tTd.textContent = new Date(h.t).toLocaleString();
+      const sTd = document.createElement('td'); sTd.textContent = h.s;
+      const asciiTd = document.createElement('td');
+      const asciiList = Array.isArray(h.ascii) ? h.ascii : [];
+      const fullAscii = `[${asciiList.join(', ')}]`;
+      const shortAscii = asciiList.length > 30 ? `[${asciiList.slice(0,30).join(', ')} ...]` : fullAscii;
+      asciiTd.textContent = shortAscii;
+      asciiTd.title = fullAscii;
+      const maxTd = document.createElement('td'); maxTd.textContent = fmt(h.max);
+      const minTd = document.createElement('td'); minTd.textContent = fmt(h.min);
+      tr.appendChild(idxTd); tr.appendChild(tTd); tr.appendChild(sTd); tr.appendChild(asciiTd); tr.appendChild(maxTd); tr.appendChild(minTd);
+      // 최신이 1번이므로 위에 붙이기
+      if ($historyBody.firstChild) {
+        $historyBody.insertBefore(tr, $historyBody.firstChild);
+      } else {
+        $historyBody.appendChild(tr);
+      }
+      // 200개 초과 시 마지막 행 제거
+      if ($historyBody.children.length > 200) {
+        $historyBody.removeChild($historyBody.lastChild);
+      }
+    }
+
+    function linearPredict(values, useCount) {
+      // values: number[]
+      const n = Math.min(values.length, useCount);
+      if (n < 2) return null;
+      // x: 0..n-1, y: last n values
+      let sumX = 0, sumY = 0, sumXY = 0, sumXX = 0;
+      for (let i = 0; i < n; i++) {
+        const x = i;
+        const y = values[values.length - n + i];
+        sumX += x; sumY += y; sumXY += x * y; sumXX += x * x;
+      }
+      const denom = n * sumXX - sumX * sumX;
+      if (denom === 0) return null;
+      const a = (n * sumXY - sumX * sumY) / denom; // slope
+      const b = (sumY - a * sumX) / n;             // intercept
+      const nextX = n; // next index
+      return a * nextX + b;
+    }
+
+    let lastTimer = null;
+    let lastPredictAt = 0;
+    const PREDICT_THROTTLE_MS = 250;
+    function update() {
+      const text = $input.value || '';
+      const arr = (window.wordNbUnicodeFormat || wordNbUnicodeFormat)(text);
+      if (arr.length === 0) {
+        $bitMax.textContent = '-';
+        $bitMin.textContent = '-';
+        $bitMaxMeta.textContent = '';
+        $bitMinMeta.textContent = '';
+        $predMax.textContent = '-';
+        $predMin.textContent = '-';
+        return;
+      }
+      try {
+        const maxVal = (window.BIT_MAX_NB || (()=>0))(arr);
+        const minVal = (window.BIT_MIN_NB || (()=>0))(arr);
+        $bitMax.textContent = fmt(maxVal);
+        $bitMin.textContent = fmt(minVal);
+        $bitMaxMeta.textContent = `len=${arr.length}`;
+        $bitMinMeta.textContent = `len=${arr.length}`;
+
+        if ($autoSave.checked) {
+          const ascii = asciiCodesFromString(text);
+          const rec = { t: Date.now(), s: text, ascii, max: maxVal, min: minVal };
+          sessionHistory.push(rec);
+          renderHistoryInfo(sessionHistory);
+          appendHistoryRow(rec, 1);
+          // save to IndexedDB (auto-save without file)
+          idbHistAdd(rec);
+          // also POST to server API so database/index.html can fetch it immediately
+          try {
+            fetch('/api/log', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ t: rec.t, s: rec.s, max: rec.max, min: rec.min })
+            }).catch(()=>{});
+          } catch (e) { /* ignore network error */ }
+          const now = performance.now();
+          if (now - lastPredictAt >= PREDICT_THROTTLE_MS) {
+            lastPredictAt = now;
+            const useN = 20;
+            const maxSeries = sessionHistory.map(h => Number(h.max)).filter(v => isFinite(v));
+            const minSeries = sessionHistory.map(h => Number(h.min)).filter(v => isFinite(v));
+            const predMax = linearPredict(maxSeries, useN);
+            const predMin = linearPredict(minSeries, useN);
+            $predMax.textContent = predMax == null ? '-' : fmt(predMax);
+            $predMin.textContent = predMin == null ? '-' : fmt(predMin);
+            $predMaxMeta.textContent = `최근 ${Math.min(maxSeries.length, useN)}개 기준`;
+            $predMinMeta.textContent = `최근 ${Math.min(minSeries.length, useN)}개 기준`;
+          }
+        }
+      } catch (e) {
+        $bitMax.textContent = '에러';
+        $bitMin.textContent = '에러';
+        $bitMaxMeta.textContent = '';
+        $bitMinMeta.textContent = '';
+        $predMax.textContent = '-';
+        $predMin.textContent = '-';
+        console.error(e);
+      }
+    }
+
+    function debouncedUpdate() {
+      const DELAY = 120; // ms
+      if (lastTimer) clearTimeout(lastTimer);
+      lastTimer = setTimeout(update, DELAY);
+    }
+
+    $input.addEventListener('input', debouncedUpdate);
+
+    // export / clear
+    $exportBtn.addEventListener('click', () => {
+      const blob = new Blob([JSON.stringify(sessionHistory, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'bit_history.json';
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+
+    $clearBtn.addEventListener('click', () => {
+      if (!confirm('기록을 모두 삭제할까요?')) return;
+      sessionHistory.length = 0;
+      renderHistoryInfo(sessionHistory);
+      renderHistoryTable(sessionHistory);
+      idbHistClear();
+    });
+
+    
+
+    // 초기 상태 (세션 히스토리 사용)
+    renderHistoryInfo(sessionHistory);
+    renderHistoryTable(sessionHistory);
+
+    // 초기 렌더
+    update();
+
+    
+
+    // 파일 연결 없이도 IndexedDB에서 자동 복원
+    (async () => {
+      if (sessionHistory.length > 0) return; // already loaded from file
+      const all = await idbHistLoadAll();
+      if (all && all.length) {
+        // ensure sorted by time
+        all.sort((a,b)=> a.t - b.t);
+        sessionHistory.push(...all);
+        renderHistoryInfo(sessionHistory);
+        renderHistoryTable(sessionHistory);
+      }
+    })();
+    
+    </script>
+</body>
+</html>
+
+
