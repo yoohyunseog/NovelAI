@@ -1,0 +1,943 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>소설 독서 뷰어</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Malgun Gothic', '맑은 고딕', sans-serif;
+            background: #f5f5f0;
+            overflow: hidden;
+        }
+
+        .container-fluid {
+            height: 100vh;
+            display: flex;
+            padding: 0;
+        }
+
+        /* 좌측 챕터 목록 */
+        .chapter-sidebar {
+            width: 280px;
+            background: #2c3e50;
+            color: white;
+            overflow-y: auto;
+            border-right: 2px solid #34495e;
+            flex-shrink: 0;
+        }
+
+        .chapter-sidebar-header {
+            padding: 20px;
+            background: #34495e;
+            border-bottom: 2px solid #1a252f;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+
+        .chapter-sidebar-header h4 {
+            margin: 0;
+            font-size: 1.2rem;
+            font-weight: 600;
+        }
+
+        .novel-title-display {
+            margin-top: 10px;
+            font-size: 0.9rem;
+            color: #ecf0f1;
+            opacity: 0.9;
+        }
+
+        .chapter-list {
+            padding: 10px 0;
+        }
+
+        .chapter-item {
+            padding: 15px 20px;
+            cursor: pointer;
+            border-bottom: 1px solid #34495e;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+
+        .chapter-item:hover {
+            background: #34495e;
+        }
+
+        .chapter-item.active {
+            background: #3498db;
+            border-left: 4px solid #2980b9;
+        }
+
+        .chapter-item-title {
+            font-size: 0.95rem;
+            font-weight: 500;
+            color: white;
+            line-height: 1.5;
+        }
+
+        .chapter-item.active .chapter-item-title {
+            font-weight: 600;
+        }
+
+        /* 메인 독서 영역 */
+        .reading-area {
+            flex: 1;
+            overflow-y: auto;
+            background: #fefefe;
+            position: relative;
+        }
+
+        .reading-content {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 60px 40px;
+            line-height: 2;
+            font-size: 1.1rem;
+            color: #333;
+        }
+
+        .chapter-header {
+            margin-bottom: 40px;
+            padding-bottom: 20px;
+            border-bottom: 3px solid #3498db;
+        }
+
+        .chapter-header-number {
+            font-size: 1rem;
+            color: #7f8c8d;
+            margin-bottom: 10px;
+            font-weight: 500;
+        }
+
+        .chapter-header-title {
+            font-size: 2.2rem;
+            font-weight: 700;
+            color: #2c3e50;
+            margin-bottom: 10px;
+        }
+
+        .attribute-section {
+            margin-bottom: 50px;
+            padding: 30px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .attribute-title {
+            font-size: 1.4rem;
+            font-weight: 600;
+            color: #2c3e50;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #ecf0f1;
+        }
+
+        .attribute-content {
+            font-size: 1.05rem;
+            line-height: 1.9;
+            color: #34495e;
+            white-space: pre-wrap;
+            word-break: keep-all;
+            text-align: justify;
+        }
+
+        .no-data-message {
+            text-align: center;
+            color: #95a5a6;
+            font-style: italic;
+            padding: 20px;
+            margin: 30px 0;
+        }
+
+        .empty-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            color: #95a5a6;
+            text-align: center;
+            padding: 40px;
+        }
+
+        .empty-state-icon {
+            font-size: 4rem;
+            margin-bottom: 20px;
+            opacity: 0.5;
+        }
+
+        .empty-state-text {
+            font-size: 1.2rem;
+            margin-bottom: 10px;
+        }
+
+        .empty-state-subtext {
+            font-size: 0.9rem;
+            opacity: 0.7;
+        }
+
+        /* 스크롤바 스타일 */
+        .chapter-sidebar::-webkit-scrollbar,
+        .reading-area::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .chapter-sidebar::-webkit-scrollbar-track,
+        .reading-area::-webkit-scrollbar-track {
+            background: #34495e;
+        }
+
+        .chapter-sidebar::-webkit-scrollbar-thumb,
+        .reading-area::-webkit-scrollbar-thumb {
+            background: #7f8c8d;
+            border-radius: 4px;
+        }
+
+        .chapter-sidebar::-webkit-scrollbar-thumb:hover,
+        .reading-area::-webkit-scrollbar-thumb:hover {
+            background: #95a5a6;
+        }
+
+        /* 로딩 인디케이터 */
+        .loading {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100%;
+            font-size: 1.2rem;
+            color: #7f8c8d;
+        }
+
+        /* 소설 제목 입력 */
+        .novel-input-section {
+            padding: 15px;
+            background: #1a252f;
+            border-bottom: 2px solid #34495e;
+        }
+
+        .novel-input-section input {
+            background: #34495e;
+            border: 1px solid #7f8c8d;
+            color: white;
+            padding: 8px 12px;
+            border-radius: 4px;
+            width: 100%;
+            font-size: 0.9rem;
+        }
+
+        .novel-input-section input::placeholder {
+            color: #95a5a6;
+        }
+
+        .novel-input-section input:focus {
+            outline: none;
+            border-color: #3498db;
+            background: #2c3e50;
+        }
+
+        .load-btn {
+            margin-top: 10px;
+            width: 100%;
+            background: #3498db;
+            border: none;
+            color: white;
+            padding: 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: background 0.3s;
+        }
+
+        .load-btn:hover {
+            background: #2980b9;
+        }
+
+        .load-btn:disabled {
+            background: #7f8c8d;
+            cursor: not-allowed;
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid">
+        <!-- 좌측 챕터 목록 -->
+        <div class="chapter-sidebar">
+            <div class="chapter-sidebar-header">
+                <h4>📖 챕터 목록</h4>
+            </div>
+            <div class="novel-input-section">
+                <input 
+                    type="text" 
+                    id="novelTitleInput" 
+                    placeholder="소설 제목을 입력하세요..."
+                    value=""
+                >
+                <button class="load-btn" id="loadChaptersBtn" onclick="loadChaptersFromServer()">
+                    🔍 챕터 목록 불러오기
+                </button>
+            </div>
+            <div class="novel-title-display" id="novelTitleDisplay" style="padding: 15px; font-size: 0.85rem; color: #ecf0f1;">
+                소설을 선택하세요.
+            </div>
+            <div style="padding: 10px 15px; background: #34495e; border-bottom: 1px solid #1a252f;">
+                <input 
+                    type="text" 
+                    id="chapterFilterInput" 
+                    placeholder="속성 키워드 검색... (예: 등장인물, 배경 설정)"
+                    style="background: #2c3e50; border: 1px solid #7f8c8d; color: white; padding: 6px 10px; border-radius: 4px; width: 100%; font-size: 0.85rem;"
+                >
+                <small style="display: block; color: #95a5a6; margin-top: 5px; font-size: 0.75rem;">
+                    표시할 속성만 필터링 (챕터 선택 후 적용)
+                </small>
+            </div>
+            <div class="chapter-list" id="chapterList">
+                <div class="loading">로딩 중...</div>
+            </div>
+        </div>
+
+        <!-- 메인 독서 영역 -->
+        <div class="reading-area">
+            <div class="reading-content" id="readingContent">
+                <div class="empty-state">
+                    <div class="empty-state-icon">📚</div>
+                    <div class="empty-state-text">챕터를 선택하세요</div>
+                    <div class="empty-state-subtext">좌측 목록에서 읽고 싶은 챕터를 선택하면 내용이 표시됩니다.</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://xn--9l4b4xi9r.com/_8%EB%B9%84%ED%8A%B8/js/bitCalculation.js" defer></script>
+    <script>
+        // 전역 변수
+        let chapters = [];
+        let currentChapterIdx = null;
+        let novelTitle = '';
+
+        // DOM 요소
+        const $novelTitleInput = document.getElementById('novelTitleInput');
+        const $loadChaptersBtn = document.getElementById('loadChaptersBtn');
+        const $novelTitleDisplay = document.getElementById('novelTitleDisplay');
+        const $chapterFilterInput = document.getElementById('chapterFilterInput');
+        const $chapterList = document.getElementById('chapterList');
+        const $readingContent = document.getElementById('readingContent');
+
+        // 서버 URL 가져오기
+        function getServerUrl(path) {
+            if (window.location.protocol === 'file:') {
+                return `http://localhost:3000${path}`;
+            }
+            return path;
+        }
+
+        // BIT 계산 함수 (bitCalculation.js 로드 대기)
+        function calculateBitValues(text) {
+            if (typeof wordNbUnicodeFormat === 'undefined' || typeof BIT_MAX_NB === 'undefined' || typeof BIT_MIN_NB === 'undefined') {
+                return { max: null, min: null };
+            }
+            
+            try {
+                const formatted = wordNbUnicodeFormat(text);
+                const max = BIT_MAX_NB(formatted);
+                const min = BIT_MIN_NB(formatted);
+                return { max, min };
+            } catch (e) {
+                console.error('BIT 계산 오류:', e);
+                return { max: null, min: null };
+            }
+        }
+
+        // 유사도 계산 헬퍼 함수 (gpt_auto_new와 동일, bitCalculation.js의 함수와 충돌 방지)
+        function calculateBitSimilarity(queryBitMax, queryBitMin, resultBitMax, resultBitMin) {
+            // 값이 유효하지 않은 경우 0 반환
+            if (resultBitMax === null || resultBitMax === undefined || 
+                resultBitMin === null || resultBitMin === undefined ||
+                queryBitMax === null || queryBitMax === undefined ||
+                queryBitMin === null || queryBitMin === undefined) {
+                return 0;
+            }
+            
+            // 숫자로 변환하여 안전하게 처리
+            const qMax = Number(queryBitMax) || 0;
+            const qMin = Number(queryBitMin) || 0;
+            const rMax = Number(resultBitMax) || 0;
+            const rMin = Number(resultBitMin) || 0;
+            
+            const bitMaxDiff = Math.abs(qMax - rMax);
+            const bitMinDiff = Math.abs(qMin - rMin);
+            const distance = Math.sqrt(bitMaxDiff * bitMaxDiff + bitMinDiff * bitMinDiff);
+            // 거리가 0이면 1.0, 거리가 멀수록 0에 가까워짐
+            return Math.max(0, 1 / (1 + distance));
+        }
+
+        // localStorage에서 소설 제목 로드 (자동 입력용)
+        function loadNovelTitleFromStorage() {
+            try {
+                const saved = localStorage.getItem('novel_composition_novel_title');
+                if (saved) {
+                    $novelTitleInput.value = saved.trim();
+                }
+            } catch (e) {
+                console.error('소설 제목 로드 오류:', e);
+            }
+        }
+
+        // 서버에서 소설 제목으로 챕터 목록 불러오기
+        async function loadChaptersFromServer() {
+            const inputTitle = $novelTitleInput.value.trim();
+            
+            if (!inputTitle) {
+                alert('소설 제목을 입력하세요.');
+                $novelTitleInput.focus();
+                return;
+            }
+
+            novelTitle = inputTitle;
+            $novelTitleDisplay.textContent = novelTitle;
+            $loadChaptersBtn.disabled = true;
+            $loadChaptersBtn.textContent = '로딩 중...';
+            $chapterList.innerHTML = '<div class="loading">챕터 목록을 불러오는 중...</div>';
+
+            try {
+                // 모든 속성 목록 조회
+                const allAttrUrl = getServerUrl('/api/attributes/all');
+                const allAttrRes = await fetch(allAttrUrl);
+
+                if (!allAttrRes.ok) {
+                    throw new Error(`HTTP ${allAttrRes.status}`);
+                }
+
+                const allAttrData = await allAttrRes.json();
+                
+                if (!allAttrData.ok || !allAttrData.attributes) {
+                    chapters = [];
+                    renderChapterList();
+                    $loadChaptersBtn.disabled = false;
+                    $loadChaptersBtn.textContent = '🔍 챕터 목록 불러오기';
+                    return;
+                }
+
+                // 소설 제목으로 시작하는 속성들만 필터링
+                // 프롬프트 2 형식: "다크 판타지 → 챕터 3: 제2장" (자동 입력 필드 값 그대로)
+                // 프롬프트 1 형식: "다크 판타지 → 챕터 3: 제2장 → 등장인물"
+                const novelAttributes = allAttrData.attributes.filter(attr => {
+                    const attrText = (attr.text || '').trim();
+                    return attrText.startsWith(novelTitle.trim() + ' → ');
+                });
+
+                console.log(`소설 "${novelTitle}" 속성 발견: ${novelAttributes.length}개`);
+
+                // 챕터 정보 추출 
+                // 프롬프트 2 형식: "소설 제목 → 챕터 번호: 챕터 제목" (parts.length === 2)
+                // 프롬프트 1 형식: "소설 제목 → 챕터 번호: 챕터 제목 → 속성명" (parts.length >= 3)
+                const chapterMap = new Map();
+
+                novelAttributes.forEach(attr => {
+                    if (!attr || !attr.text) return;
+                    const attrText = String(attr.text || '');
+                    if (!attrText || typeof attrText.split !== 'function') return;
+                    const parts = attrText.split(' → ');
+                    
+                    // 최소 2개 부분이 있어야 함 ("소설 제목 → 챕터")
+                    if (parts.length >= 2) {
+                        const chapterPart = parts[1].trim(); // "챕터 3: 제2장" 형식
+                        
+                        // 챕터 정보 파싱
+                        const chapterMatch = chapterPart.match(/^챕터\s*(\d+)(?:\s*:\s*(.+))?/);
+                        if (chapterMatch) {
+                            const chapterNum = chapterMatch[1];
+                            const chapterTitle = chapterMatch[2] || '';
+                            
+                            // 챕터 번호가 없으면 추가, 있으면 제목이 더 긴 것으로 업데이트
+                            const existingChapter = chapterMap.get(chapterNum);
+                            if (!existingChapter) {
+                                // 새로운 챕터 추가
+                                chapterMap.set(chapterNum, {
+                                    number: chapterNum,
+                                    title: chapterTitle.trim()
+                                });
+                            } else {
+                                // 기존 챕터가 있고, 새 제목이 더 길거나 기존 제목이 없으면 업데이트
+                                if (chapterTitle.trim() && 
+                                    (!existingChapter.title || chapterTitle.trim().length > existingChapter.title.length)) {
+                                    chapterMap.set(chapterNum, {
+                                        number: chapterNum,
+                                        title: chapterTitle.trim()
+                                    });
+                                }
+                            }
+                        }
+                    }
+                });
+
+                console.log('챕터 맵:', Array.from(chapterMap.entries()));
+
+                // 챕터 목록 생성 (번호 순서대로 정렬)
+                chapters = Array.from(chapterMap.values())
+                    .sort((a, b) => parseInt(a.number) - parseInt(b.number));
+
+                console.log(`챕터 목록 생성: ${chapters.length}개`, chapters);
+
+                // 목록 렌더링
+                renderChapterList();
+
+                // 첫 번째 챕터 자동 선택
+                if (chapters.length > 0) {
+                    currentChapterIdx = 0;
+                    await selectChapter(0);
+                } else {
+                    $chapterList.innerHTML = '<div style="padding: 20px; text-align: center; color: #95a5a6;">이 소설에는 저장된 챕터가 없습니다.</div>';
+                }
+
+            } catch (e) {
+                console.error('챕터 목록 로드 오류:', e);
+                $chapterList.innerHTML = `<div style="padding: 20px; text-align: center; color: #e74c3c;">로드 실패: ${escapeHtml(e.message)}</div>`;
+            } finally {
+                $loadChaptersBtn.disabled = false;
+                $loadChaptersBtn.textContent = '🔍 챕터 목록 불러오기';
+            }
+        }
+
+        // Enter 키로도 로드 가능하도록
+        if ($novelTitleInput) {
+            $novelTitleInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    loadChaptersFromServer();
+                }
+            });
+        }
+
+        // 챕터 목록 렌더링 (필터링 없이 모든 챕터 표시)
+        function renderChapterList() {
+            if (chapters.length === 0) {
+                $chapterList.innerHTML = '<div style="padding: 20px; text-align: center; color: #95a5a6;">저장된 챕터가 없습니다.</div>';
+                return;
+            }
+
+            let html = '';
+            chapters.forEach((chapter, idx) => {
+                const chapterNumber = chapter.number || `${idx + 1}`;
+                const chapterTitle = chapter.title || '';
+                const isActive = currentChapterIdx === idx;
+                
+                // "소설 제목 → 챕터 번호: 챕터 제목" 형식으로 표시
+                const chapterDisplayText = novelTitle 
+                    ? `${novelTitle} → 챕터 ${chapterNumber}${chapterTitle ? `: ${chapterTitle}` : ''}`
+                    : `챕터 ${chapterNumber}${chapterTitle ? `: ${chapterTitle}` : ''}`;
+                
+                html += `
+                    <div class="chapter-item ${isActive ? 'active' : ''}" onclick="selectChapter(${idx})">
+                        <div class="chapter-item-title">${escapeHtml(chapterDisplayText)}</div>
+                    </div>
+                `;
+            });
+            $chapterList.innerHTML = html;
+        }
+
+        // 챕터 선택
+        async function selectChapter(idx) {
+            if (idx < 0 || idx >= chapters.length) {
+                console.warn('유효하지 않은 챕터 인덱스:', idx);
+                return;
+            }
+
+            currentChapterIdx = idx;
+            const chapter = chapters[idx];
+            
+            // 클릭한 챕터의 키워드를 필터 입력란에 자동 입력
+            if ($chapterFilterInput) {
+                const chapterNumber = chapter.number || `${idx + 1}`;
+                const chapterTitle = chapter.title || '';
+                const chapterPart = `챕터 ${chapterNumber}${chapterTitle ? `: ${chapterTitle}` : ''}`;
+                $chapterFilterInput.value = chapterPart;
+            }
+            
+            // 목록 업데이트
+            renderChapterList();
+
+            // 챕터 내용 로드
+            await loadChapterContent(chapter);
+        }
+
+        // 챕터 내용 로드
+        async function loadChapterContent(chapter) {
+            $readingContent.innerHTML = '<div class="loading">📖 챕터를 불러오는 중...</div>';
+
+            try {
+                const chapterNumber = chapter.number || `챕터 ${currentChapterIdx + 1}`;
+                const chapterTitle = chapter.title || '제목 없음';
+                const chapterDisplay = `${chapterNumber}${chapterTitle ? `: ${chapterTitle}` : ''}`;
+
+                // 모든 속성 목록 조회
+                const allAttrUrl = getServerUrl('/api/attributes/all');
+                const allAttrRes = await fetch(allAttrUrl);
+
+                if (!allAttrRes.ok) {
+                    throw new Error(`HTTP ${allAttrRes.status}`);
+                }
+
+                const allAttrData = await allAttrRes.json();
+                
+                if (!allAttrData.ok || !allAttrData.attributes) {
+                    $readingContent.innerHTML = `
+                        <div class="empty-state">
+                            <div class="empty-state-icon">📄</div>
+                            <div class="empty-state-text">저장된 속성이 없습니다.</div>
+                        </div>
+                    `;
+                    return;
+                }
+
+                // 현재 챕터에 해당하는 속성 필터링 (gpt_auto_new 알고리즘 사용)
+                // 검색 쿼리: "다크 판타지 → 챕터 1: 개요"
+                const searchQuery = `${novelTitle} → ${chapterDisplay}`;
+                
+                // BIT 계산 스크립트 로드 대기
+                let searchBits = calculateBitValues(searchQuery);
+                if ((searchBits.max === null || searchBits.min === null) && 
+                    (typeof wordNbUnicodeFormat === 'undefined' || typeof BIT_MAX_NB === 'undefined' || typeof BIT_MIN_NB === 'undefined')) {
+                    console.warn('BIT 계산 스크립트가 아직 로드되지 않음. 잠시 후 재시도...');
+                    // 잠시 대기 후 재시도 (최대 3번)
+                    for (let i = 0; i < 3; i++) {
+                        await new Promise(resolve => setTimeout(resolve, 300));
+                        if (typeof wordNbUnicodeFormat !== 'undefined' && typeof BIT_MAX_NB !== 'undefined' && typeof BIT_MIN_NB !== 'undefined') {
+                            searchBits = calculateBitValues(searchQuery);
+                            if (searchBits.max !== null && searchBits.min !== null) {
+                                break;
+                            }
+                        }
+                    }
+                }
+                
+                let chapterAttributes = [];
+                
+                if (searchBits.max !== null && searchBits.min !== null && searchBits.max && searchBits.min) {
+                    // gpt_auto_new 방식: 모든 속성과 BIT 유사도 비교
+                    chapterAttributes = allAttrData.attributes
+                        .filter(attr => attr && attr.text) // null/undefined 체크
+                        .map(attr => {
+                            // 문자열로 안전하게 변환
+                            const attrText = String(attr.text || '').trim();
+                            if (!attrText) return null;
+                            
+                            let similarity = 0;
+                            
+                            // 정확히 일치하는 속성 (텍스트 또는 BIT 값)은 100%
+                            if (attrText === searchQuery.trim()) {
+                                similarity = 1.0;
+                            } else {
+                                // BIT 값이 정확히 일치하는 경우도 100%
+                                const bitMaxDiff = Math.abs((searchBits.max || 0) - (attr.bitMax || 0));
+                                const bitMinDiff = Math.abs((searchBits.min || 0) - (attr.bitMin || 0));
+                                if (bitMaxDiff === 0 && bitMinDiff === 0) {
+                                    similarity = 1.0;
+                                } else {
+                                    // 유사도 계산 (로컬 함수 사용)
+                                    similarity = calculateBitSimilarity(searchBits.max, searchBits.min, attr.bitMax, attr.bitMin);
+                                }
+                            }
+                            
+                            return { ...attr, similarity };
+                        })
+                        .filter(attr => attr !== null) // null 필터링
+                        .filter(attr => {
+                            // 유사도 임계값 0.1 이상만 필터링
+                            if (attr.similarity < 0.1) return false;
+                            
+                            // 추가 필터링: 소설 제목과 챕터가 일치하는지 확인
+                            const attrText = String(attr.text || '');
+                            if (!attrText || typeof attrText.split !== 'function') return false;
+                            
+                            const parts = attrText.split(' → ');
+                            
+                            if (parts.length >= 2) {
+                                const attrNovelTitle = parts[0].trim();
+                                const attrChapterPart = parts[1].trim();
+                                
+                                // 소설 제목이 일치하고, 챕터 부분도 유사한지 확인
+                                if (attrNovelTitle === novelTitle.trim()) {
+                                    // 정확히 일치하는 경우 또는 유사도가 높은 경우
+                                    return attrChapterPart === chapterDisplay || attr.similarity >= 0.7;
+                                }
+                            }
+                            
+                            return false;
+                        })
+                        .sort((a, b) => (b.similarity || 0) - (a.similarity || 0))
+                        .slice(0, 20); // 상위 20개만 선택
+                } else {
+                    // BIT 계산 실패 시 기본 필터링 사용
+                    const expectedPrefixWithAttr = `${novelTitle} → ${chapterDisplay} → `;
+                    const expectedPrefixChapterOnly = `${novelTitle} → ${chapterDisplay}`;
+                    
+                    chapterAttributes = allAttrData.attributes
+                        .filter(attr => attr && attr.text) // null/undefined 체크
+                        .filter(attr => {
+                            // 문자열로 안전하게 변환
+                            const attrText = String(attr.text || '').trim();
+                            if (!attrText || typeof attrText.split !== 'function') return false;
+                            
+                            // 프롬프트 1 형식: "소설 제목 → 챕터 → 속성명"
+                            if (attrText.startsWith(expectedPrefixWithAttr)) {
+                                const parts = attrText.split(' → ');
+                                if (parts.length >= 3) {
+                                    const attrNovelTitle = parts[0].trim();
+                                    const attrChapterPart = parts[1].trim();
+                                    return attrNovelTitle === novelTitle.trim() && attrChapterPart === chapterDisplay;
+                                }
+                            }
+                            
+                            // 프롬프트 2 형식: "소설 제목 → 챕터" (정확히 일치)
+                            if (attrText === expectedPrefixChapterOnly) {
+                                return true;
+                            }
+                            
+                            return false;
+                        })
+                        .map(attr => ({ ...attr, similarity: 1.0 })); // 기본 필터링은 100% 유사도로 처리
+                }
+
+                console.log(`챕터 속성 발견: ${chapterAttributes.length}개`, { 
+                    chapterDisplay,
+                    searchQuery,
+                    searchBits,
+                    attributes: chapterAttributes.map(a => ({ text: a.text, similarity: a.similarity }))
+                });
+
+                if (chapterAttributes.length === 0) {
+                    $readingContent.innerHTML = `
+                        <div class="chapter-header">
+                            <div class="chapter-header-number">${chapterNumber}</div>
+                            <div class="chapter-header-title">${escapeHtml(chapterTitle)}</div>
+                        </div>
+                        <div class="no-data-message">이 챕터에는 저장된 내용이 없습니다.</div>
+                    `;
+                    return;
+                }
+
+                // 각 속성의 데이터 조회
+                const attributePromises = chapterAttributes.map(async (attr) => {
+                    try {
+                        const dataUrl = getServerUrl(`/api/attributes/data?bitMax=${attr.bitMax}&bitMin=${attr.bitMin}&limit=100`);
+                        const dataRes = await fetch(dataUrl);
+                        
+                        if (dataRes.ok) {
+                            const dataData = await dataRes.json();
+                            if (dataData.ok && dataData.items) {
+                                console.log(`속성 "${attr.text}" 데이터 조회:`, {
+                                    totalItems: dataData.items.length
+                                });
+                                
+                                // 필터링 없이 모든 데이터 출력
+                                let dataList = dataData.items
+                                    .filter(item => {
+                                        // 데이터 텍스트만 확인 (소설/챕터 필터링 없음)
+                                        return item.data && item.data.text;
+                                    })
+                                    .map(item => item.data.text);
+                                
+                                console.log(`속성 "${attr.text}" 데이터: ${dataList.length}개`);
+
+                                // 속성명에서 실제 속성 이름 추출
+                                // 프롬프트 1 형식: "소설 제목 → 챕터 → 속성명" → 마지막 부분이 속성명
+                                // 프롬프트 2 형식: "소설 제목 → 챕터" → 속성명 없음, 챕터 제목을 표시
+                                const attrText = String(attr.text || '');
+                                if (!attrText || typeof attrText.split !== 'function') {
+                                    return {
+                                        attributeName: '속성',
+                                        dataList: dataList
+                                    };
+                                }
+                                
+                                const parts = attrText.split(' → ');
+                                let attributeName;
+                                
+                                if (parts.length === 2) {
+                                    // 프롬프트 2 형식: 챕터 정보 표시
+                                    const chapterPart = parts[1].trim();
+                                    attributeName = chapterPart || '챕터 내용';
+                                } else if (parts.length >= 3) {
+                                    // 프롬프트 1 형식: 마지막 부분이 속성명
+                                    attributeName = parts[parts.length - 1].trim() || '속성';
+                                } else {
+                                    attributeName = attr.text;
+                                }
+                                
+                                return {
+                                    attributeName: attributeName,
+                                    dataList: dataList
+                                };
+                            }
+                        }
+                    } catch (e) {
+                        console.warn(`속성 "${attr.text}" 데이터 로드 실패:`, e);
+                    }
+                    return null;
+                });
+
+                const attributesWithData = (await Promise.all(attributePromises)).filter(Boolean);
+                
+                console.log('속성 데이터 로드 완료:', {
+                    chapterAttributesCount: chapterAttributes.length,
+                    attributesWithDataCount: attributesWithData.length,
+                    attributesWithData: attributesWithData.map(a => ({
+                        name: a.attributeName,
+                        dataCount: a.dataList.length
+                    }))
+                });
+
+                // 내용 렌더링
+                let html = `
+                    <div class="chapter-header">
+                        <div class="chapter-header-number">${chapterNumber}</div>
+                        <div class="chapter-header-title">${escapeHtml(chapterTitle)}</div>
+                    </div>
+                `;
+
+                // 속성 필터링 (필터 입력란의 키워드로)
+                const filterKeyword = $chapterFilterInput ? $chapterFilterInput.value.trim() : '';
+                let filteredAttributes = attributesWithData;
+                
+                if (filterKeyword) {
+                    // 필터 키워드와 정확히 일치하는 속성만 표시
+                    filteredAttributes = attributesWithData.filter(attrData => {
+                        const attributeName = String(attrData.attributeName || '').trim();
+                        return attributeName === filterKeyword || attributeName.trim() === filterKeyword.trim();
+                    });
+                    
+                    console.log('속성 필터링:', {
+                        filterKeyword,
+                        total: attributesWithData.length,
+                        filtered: filteredAttributes.length
+                    });
+                }
+
+                if (filteredAttributes.length === 0) {
+                    if (filterKeyword) {
+                        html += `<div class="no-data-message">"${escapeHtml(filterKeyword)}" 속성의 데이터가 없습니다.</div>`;
+                    } else {
+                        html += '<div class="no-data-message">이 챕터에는 저장된 내용이 없습니다.</div>';
+                    }
+                } else {
+                    let hasAnyData = false;
+                    filteredAttributes.forEach(attrData => {
+                        if (!attrData.dataList || attrData.dataList.length === 0) {
+                            console.warn(`속성 "${attrData.attributeName}"에 데이터가 없습니다.`);
+                            return;
+                        }
+                        
+                        // 데이터 필터링: 필터 키워드가 입력된 경우, 데이터 내용에 키워드가 포함된 것만 표시
+                        let filteredDataList = attrData.dataList;
+                        if (filterKeyword) {
+                            filteredDataList = attrData.dataList.filter(data => {
+                                const dataText = String(data || '').trim();
+                                return dataText.toLowerCase().includes(filterKeyword.toLowerCase());
+                            });
+                        }
+                        
+                        if (filteredDataList.length === 0) {
+                            console.warn(`속성 "${attrData.attributeName}"에 필터링된 데이터가 없습니다.`);
+                            return;
+                        }
+                        
+                        hasAnyData = true;
+                        const dataText = filteredDataList.map(data => escapeHtml(String(data))).join('\n\n');
+                        
+                        console.log(`속성 "${attrData.attributeName}" 데이터 렌더링: ${filteredDataList.length}/${attrData.dataList.length}개 (필터링 후/전체)`);
+                        
+                        html += `
+                            <div class="attribute-section">
+                                <div class="attribute-title">${escapeHtml(attrData.attributeName)}</div>
+                                <div class="attribute-content">
+                                    ${dataText}
+                                </div>
+                            </div>
+                        `;
+                    });
+                    
+                    if (!hasAnyData) {
+                        if (filterKeyword) {
+                            html += `<div class="no-data-message">"${escapeHtml(filterKeyword)}" 키워드가 포함된 데이터가 없습니다.</div>`;
+                        } else {
+                            html += '<div class="no-data-message">이 챕터에는 저장된 내용이 없습니다.</div>';
+                        }
+                    }
+                }
+
+                $readingContent.innerHTML = html;
+
+                // 스크롤 맨 위로
+                document.querySelector('.reading-area').scrollTop = 0;
+
+            } catch (e) {
+                console.error('챕터 내용 로드 오류:', e);
+                console.error('오류 상세:', {
+                    message: e.message,
+                    stack: e.stack,
+                    chapter: chapter,
+                    novelTitle: novelTitle
+                });
+                $readingContent.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">⚠️</div>
+                        <div class="empty-state-text">챕터를 불러오는 중 오류가 발생했습니다.</div>
+                        <div class="empty-state-subtext" style="font-size: 0.85rem; margin-top: 10px;">
+                            <strong>오류:</strong> ${escapeHtml(e.message || '알 수 없는 오류')}<br>
+                            <small style="color: #95a5a6;">콘솔에서 자세한 오류 정보를 확인하세요.</small>
+                        </div>
+                    </div>
+                `;
+            }
+        }
+
+        // HTML 이스케이프
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // 전역 함수로 등록
+        window.selectChapter = selectChapter;
+
+        // 속성 필터 입력 이벤트 (데이터 필터링용)
+        if ($chapterFilterInput) {
+            let filterTimer = null;
+            $chapterFilterInput.addEventListener('input', () => {
+                // 디바운싱으로 속성 필터링 (현재 선택된 챕터 재로드)
+                if (filterTimer) clearTimeout(filterTimer);
+                filterTimer = setTimeout(() => {
+                    // 현재 선택된 챕터가 있으면 재로드하여 필터링 적용
+                    if (currentChapterIdx !== null && currentChapterIdx >= 0 && currentChapterIdx < chapters.length) {
+                        selectChapter(currentChapterIdx);
+                    }
+                }, 300);
+            });
+        }
+
+        // 페이지 로드 시 초기화
+        console.log('소설 독서 뷰어 로드 시작');
+        loadNovelTitleFromStorage();
+        
+        // localStorage에 소설 제목이 있으면 자동으로 로드
+        const savedTitle = localStorage.getItem('novel_composition_novel_title');
+        if (savedTitle && savedTitle.trim()) {
+            setTimeout(() => {
+                loadChaptersFromServer();
+            }, 300);
+        }
+    </script>
+</body>
+</html>
+
