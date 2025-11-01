@@ -476,10 +476,10 @@ ${customPrompt ? `\n[추가 지시사항]\n${customPrompt}\n` : ''}
         function displayExtractedAttributes() {
             let html = '<div class="row">';
             extractedAttributesList.forEach((item, idx) => {
-                const attrMax = item.attributeBitMax !== null && item.attributeBitMax !== undefined ? item.attributeBitMax.toFixed(10) : '-';
-                const attrMin = item.attributeBitMin !== null && item.attributeBitMin !== undefined ? item.attributeBitMin.toFixed(10) : '-';
-                const dataMax = item.dataBitMax !== null && item.dataBitMax !== undefined ? item.dataBitMax.toFixed(10) : '-';
-                const dataMin = item.dataBitMin !== null && item.dataBitMin !== undefined ? item.dataBitMin.toFixed(10) : '-';
+                const attrMax = item.attributeBitMax !== null && item.attributeBitMax !== undefined ? item.attributeBitMax.toFixed(15) : '-';
+                const attrMin = item.attributeBitMin !== null && item.attributeBitMin !== undefined ? item.attributeBitMin.toFixed(15) : '-';
+                const dataMax = item.dataBitMax !== null && item.dataBitMax !== undefined ? item.dataBitMax.toFixed(15) : '-';
+                const dataMin = item.dataBitMin !== null && item.dataBitMin !== undefined ? item.dataBitMin.toFixed(15) : '-';
                 const saveStatus = item.saveStatus || 'pending'; // pending, saving, success, duplicate, error
                 const saveMessage = item.saveMessage || '';
                 
@@ -633,8 +633,8 @@ ${customPrompt ? `\n[추가 지시사항]\n${customPrompt}\n` : ''}
             const text = e.target.value.trim();
             if (text) {
                 const { max, min } = calculateBitValues(text);
-                $newDataMax.textContent = max !== null ? max.toFixed(10) : '-';
-                $newDataMin.textContent = min !== null ? min.toFixed(10) : '-';
+                $newDataMax.textContent = max !== null ? max.toFixed(15) : '-';
+                $newDataMin.textContent = min !== null ? min.toFixed(15) : '-';
             } else {
                 $newDataMax.textContent = '-';
                 $newDataMin.textContent = '-';
@@ -702,7 +702,7 @@ ${customPrompt ? `\n[추가 지시사항]\n${customPrompt}\n` : ''}
                                     <span class="attribute-name">${escapeHtml(attr.text)}</span>
                                 </div>
                                 <small class="text-muted">
-                                    BIT: ${attr.bitMax.toFixed(6)}, ${attr.bitMin.toFixed(6)} | 
+                                    BIT: ${attr.bitMax.toFixed(15)}, ${attr.bitMin.toFixed(15)} | 
                                     데이터 ${attr.dataCount}개
                                 </small>
                             </div>
@@ -711,7 +711,7 @@ ${customPrompt ? `\n[추가 지시사항]\n${customPrompt}\n` : ''}
                                     <div class="data-item">
                                         <strong>${escapeHtml(data.text)}</strong>
                                         <small class="text-muted ms-2">
-                                            BIT: ${data.bitMax.toFixed(6)}, ${data.bitMin.toFixed(6)}
+                                            BIT: ${data.bitMax.toFixed(15)}, ${data.bitMin.toFixed(15)}
                                         </small>
                                     </div>
                                 `).join('') : '<div class="text-muted small">데이터가 없습니다.</div>'}
@@ -742,8 +742,8 @@ ${customPrompt ? `\n[추가 지시사항]\n${customPrompt}\n` : ''}
             };
             
             $modalAttributeName.textContent = attributeText;
-            $modalAttributeMax.textContent = attributeBitMax.toFixed(10);
-            $modalAttributeMin.textContent = attributeBitMin.toFixed(10);
+            $modalAttributeMax.textContent = attributeBitMax.toFixed(15);
+            $modalAttributeMin.textContent = attributeBitMin.toFixed(15);
             $newDataInput.value = '';
             $newDataMax.textContent = '-';
             $newDataMin.textContent = '-';

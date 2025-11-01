@@ -1524,6 +1524,140 @@ app.get('/api/attributes/data', (req, res) => {
   }
 });
 
+// 속성 데이터 삭제
+app.post('/api/attributes/data/delete', (req, res) => {
+  try {
+    const { attributeBitMax, attributeBitMin, dataBitMax, dataBitMin } = req.body || {};
+    
+    if (attributeBitMax === undefined || attributeBitMin === undefined) {
+      return res.status(400).json({ ok: false, error: 'attributeBitMax and attributeBitMin required' });
+    }
+    
+    if (dataBitMax === undefined || dataBitMin === undefined) {
+      return res.status(400).json({ ok: false, error: 'dataBitMax and dataBitMin required' });
+    }
+    
+    let deletedCount = 0;
+    const filesProcessed = [];
+    
+    // 삭제할 파일 목록: 속성 및 데이터 BIT 값으로 저장된 모든 파일
+    const filesToCheck = [];
+    
+    // 1. 속성 MAX 폴더
+    if (Number.isFinite(attributeBitMax)) {
+      const { nestedFile, baseDir, digits } = nestedPathFromNumber('max', attributeBitMax);
+      if (fs.existsSync(nestedFile)) {
+        filesToCheck.push(nestedFile);
+      } else {
+        // 하위 폴더 재귀 탐색
+        const allLogFiles = findAllLogFiles(baseDir, 'max', digits);
+        filesToCheck.push(...allLogFiles);
+      }
+    }
+    
+    // 2. 속성 MIN 폴더
+    if (Number.isFinite(attributeBitMin)) {
+      const { nestedFile, baseDir, digits } = nestedPathFromNumber('min', attributeBitMin);
+      if (fs.existsSync(nestedFile)) {
+        filesToCheck.push(nestedFile);
+      } else {
+        const allLogFiles = findAllLogFiles(baseDir, 'min', digits);
+        filesToCheck.push(...allLogFiles);
+      }
+    }
+    
+    // 3. 데이터 MAX 폴더
+    if (Number.isFinite(dataBitMax)) {
+      const { nestedFile, baseDir, digits } = nestedPathFromNumber('max', dataBitMax);
+      if (fs.existsSync(nestedFile)) {
+        filesToCheck.push(nestedFile);
+      } else {
+        const allLogFiles = findAllLogFiles(baseDir, 'max', digits);
+        filesToCheck.push(...allLogFiles);
+      }
+    }
+    
+    // 4. 데이터 MIN 폴더
+    if (Number.isFinite(dataBitMin)) {
+      const { nestedFile, baseDir, digits } = nestedPathFromNumber('min', dataBitMin);
+      if (fs.existsSync(nestedFile)) {
+        filesToCheck.push(nestedFile);
+      } else {
+        const allLogFiles = findAllLogFiles(baseDir, 'min', digits);
+        filesToCheck.push(...allLogFiles);
+      }
+    }
+    
+    // 중복 제거
+    const uniqueFiles = [...new Set(filesToCheck)];
+    
+    // 각 파일에서 매칭되는 레코드 삭제
+    for (const filePath of uniqueFiles) {
+      if (!fs.existsSync(filePath)) continue;
+      
+      try {
+        const content = fs.readFileSync(filePath, 'utf8');
+        const lines = content.split(/\r?\n/).filter(Boolean);
+        const remainingLines = [];
+        let fileDeletedCount = 0;
+        
+        for (const line of lines) {
+          try {
+            const parsed = JSON.parse(line);
+            
+            // 삭제 조건: attribute BIT와 data BIT가 정확히 일치하는 경우
+            const attributeMatch = parsed.attribute && 
+              parsed.attribute.bitMax === attributeBitMax && 
+              parsed.attribute.bitMin === attributeBitMin;
+            
+            const dataMatch = (parsed.data && 
+              parsed.data.bitMax === dataBitMax && 
+              parsed.data.bitMin === dataBitMin) ||
+              (parsed.max === dataBitMax && parsed.min === dataBitMin);
+            
+            if (attributeMatch && dataMatch) {
+              // 이 레코드는 삭제 (remainingLines에 추가하지 않음)
+              fileDeletedCount++;
+              deletedCount++;
+            } else {
+              // 나머지는 유지
+              remainingLines.push(line);
+            }
+          } catch (e) {
+            // JSON 파싱 실패 시 원본 유지
+            remainingLines.push(line);
+          }
+        }
+        
+        // 파일이 변경된 경우에만 쓰기
+        if (fileDeletedCount > 0) {
+          const newContent = remainingLines.length > 0 
+            ? remainingLines.join('\n') + '\n' 
+            : '';
+          fs.writeFileSync(filePath, newContent, 'utf8');
+          filesProcessed.push({ file: filePath, deleted: fileDeletedCount });
+          console.log(`[Delete] ${filePath}: ${fileDeletedCount} record(s) deleted`);
+        }
+      } catch (e) {
+        console.warn(`[Delete] Error processing ${filePath}:`, e);
+        // 파일 처리 실패해도 계속 진행
+      }
+    }
+    
+    console.log(`[Delete] Total ${deletedCount} record(s) deleted from ${filesProcessed.length} file(s)`);
+    
+    return res.json({ 
+      ok: true, 
+      deletedCount, 
+      filesProcessed: filesProcessed.length,
+      details: filesProcessed 
+    });
+  } catch (e) {
+    console.error('[Attribute] Delete error:', e);
+    return res.status(500).json({ ok: false, error: String(e.message || e) });
+  }
+});
+
 // ==================== 상위 속성 계층 구조 API ====================
 
 // 모든 속성 수집 (클러스터 감지용)

@@ -7,6 +7,7 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://xn--9l4b4xi9r.com/_8%EB%B9%84%ED%8A%B8/js/bitCalculation.js" defer></script>
+    <script src="js/searchAlgorithm.js"></script>
     <style>
         .gpt-section {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -274,6 +275,30 @@
                             </div>
                         </div>
                         
+                        <!-- 검색 결과 필터링 -->
+                        <div class="mt-3 p-2 bg-light rounded">
+                            <label class="form-label fw-bold small mb-2">🔍 검색 결과 필터링 (선택사항)</label>
+                            <input 
+                                type="text" 
+                                id="searchFilterInput" 
+                                class="form-control form-control-sm" 
+                                placeholder="검색 결과를 추가로 필터링할 키워드를 입력하세요..."
+                            >
+                            <small class="text-muted d-block mt-1">검색 결과에서 이 키워드가 포함된 항목만 표시합니다.</small>
+                        </div>
+                        
+                        <!-- 추가 검색 -->
+                        <div class="mt-3 p-2 bg-light rounded">
+                            <label class="form-label fw-bold small mb-2">➕ 추가 검색 (선택사항)</label>
+                            <input 
+                                type="text" 
+                                id="additionalSearchInput" 
+                                class="form-control form-control-sm" 
+                                placeholder="쉼표로 구분하여 추가 검색 키워드를 입력하세요"
+                            >
+                            <small class="text-muted d-block mt-1">기본 검색어에 쉼표로 구분된 키워드를 각각 추가하여 검색합니다. 예: "기본 검색어,추가키워드1", "기본 검색어,추가키워드2"</small>
+                        </div>
+                        
                         <small class="text-muted">이 입력란에 입력하면 자동으로 검색이 실행됩니다.</small>
                     </div>
 
@@ -374,6 +399,8 @@
       const $searchOptionAttribute = document.getElementById('searchOptionAttribute');
       const $searchOptionAll = document.getElementById('searchOptionAll');
       const $searchOptionData = document.getElementById('searchOptionData');
+      const $searchFilterInput = document.getElementById('searchFilterInput');
+      const $additionalSearchInput = document.getElementById('additionalSearchInput');
 
       // GPT 분석 결과 표시용 요소
       const $displayedPrompt = document.getElementById('displayedPrompt');
@@ -384,6 +411,7 @@
       let searchInputTimer = null;
       let lastInput = '';
       let lastSearchInput = '';
+      let lastSearchResults = []; // 검색 결과 저장 (필터링용)
       let analyzedAttribute = '';
       let analyzedData = '';
       let analyzedAttrBits = null;
@@ -537,10 +565,10 @@ ${customPrompt ? `\n[추가 지시사항]\n${customPrompt}\n` : ''}
           $gptResponse.textContent = data.response;
           $extractedAttribute.textContent = analyzedAttribute;
           $extractedData.textContent = analyzedData;
-          $extractedAttrMax.textContent = analyzedAttrBits.max !== null ? analyzedAttrBits.max.toFixed(10) : '-';
-          $extractedAttrMin.textContent = analyzedAttrBits.min !== null ? analyzedAttrBits.min.toFixed(10) : '-';
-          $extractedDataMax.textContent = analyzedDataBits.max !== null ? analyzedDataBits.max.toFixed(10) : '-';
-          $extractedDataMin.textContent = analyzedDataBits.min !== null ? analyzedDataBits.min.toFixed(10) : '-';
+          $extractedAttrMax.textContent = analyzedAttrBits.max !== null ? analyzedAttrBits.max.toFixed(15) : '-';
+          $extractedAttrMin.textContent = analyzedAttrBits.min !== null ? analyzedAttrBits.min.toFixed(15) : '-';
+          $extractedDataMax.textContent = analyzedDataBits.max !== null ? analyzedDataBits.max.toFixed(15) : '-';
+          $extractedDataMin.textContent = analyzedDataBits.min !== null ? analyzedDataBits.min.toFixed(15) : '-';
 
           // 자동으로 실시간 입력란에 복사
           $attributeInput.value = analyzedAttribute;
@@ -628,8 +656,8 @@ ${customPrompt ? `\n[추가 지시사항]\n${customPrompt}\n` : ''}
       // real_time.html의 기능들 (자동 저장, 검색 등)
       function updateBitDisplay(text, $maxEl, $minEl) {
         const { max, min } = calculateBitValues(text);
-        if ($maxEl) $maxEl.textContent = max !== null ? max.toFixed(10) : '-';
-        if ($minEl) $minEl.textContent = min !== null ? min.toFixed(10) : '-';
+        if ($maxEl) $maxEl.textContent = max !== null ? max.toFixed(15) : '-';
+        if ($minEl) $minEl.textContent = min !== null ? min.toFixed(15) : '-';
         return { max, min };
       }
 
@@ -690,44 +718,22 @@ ${customPrompt ? `\n[추가 지시사항]\n${customPrompt}\n` : ''}
         }
       }
 
-      // 유사도 계산 헬퍼 함수
+      // 유사도 계산 헬퍼 함수 (공통 모듈 사용)
       function calculateSimilarity(queryBitMax, queryBitMin, resultBitMax, resultBitMin) {
-        if (resultBitMax === null || resultBitMax === undefined || 
-            resultBitMin === null || resultBitMin === undefined) {
-          return 0;
-        }
-        const bitMaxDiff = Math.abs((queryBitMax || 0) - (resultBitMax || 0));
-        const bitMinDiff = Math.abs((queryBitMin || 0) - (resultBitMin || 0));
-        const distance = Math.sqrt(bitMaxDiff * bitMaxDiff + bitMinDiff * bitMinDiff);
-        // 거리가 0이면 1.0, 거리가 멀수록 0에 가까워짐
-        return Math.max(0, 1 / (1 + distance));
+        return window.SearchAlgorithm.calculateSimilarity(queryBitMax, queryBitMin, resultBitMax, resultBitMin);
       }
 
-      async function autoSearch(bitMax, bitMin, searchText = null) {
-        if (!bitMax || !bitMin) return;
-
-        try {
-          $searchStatus.textContent = '검색 중...';
-          $searchStatus.style.color = '#007bff';
-
-          // 검색 옵션 가져오기
-          let searchOption = 'attribute'; // 기본값: 속성으로만 검색
-          if ($searchOptionAll && $searchOptionAll.checked) {
-            searchOption = 'all';
-          } else if ($searchOptionData && $searchOptionData.checked) {
-            searchOption = 'data';
-          } else if ($searchOptionAttribute && $searchOptionAttribute.checked) {
-            searchOption = 'attribute';
-          }
-
-          let results = [];
-          // 검색 텍스트가 제공되면 해당 텍스트를 속성 후보로도 고려
-          let attributeText = $attributeInput.value.trim();
-          // 실시간 조회 입력란에서 검색한 경우, 검색 텍스트를 속성 후보로 사용
-          if (!attributeText && searchText) {
-            attributeText = searchText.trim();
-          }
-          const dataText = $input.value.trim();
+      // 단일 검색 쿼리 실행 함수 (내부 헬퍼)
+      async function executeSingleSearch(bitMax, bitMin, searchText, searchOption) {
+        let results = [];
+        
+        // 검색 텍스트가 제공되면 해당 텍스트를 속성 후보로도 고려
+        let attributeText = $attributeInput.value.trim();
+        // 실시간 조회 입력란에서 검색한 경우, 검색 텍스트를 속성 후보로 사용
+        if (!attributeText && searchText) {
+          attributeText = searchText.trim();
+        }
+        const dataText = $input.value.trim();
 
           // 1. 속성 검색 (속성 검색 또는 전체 검색일 때)
           if (searchOption === 'attribute' || searchOption === 'all') {
@@ -752,31 +758,13 @@ ${customPrompt ? `\n[추가 지시사항]\n${customPrompt}\n` : ''}
                         const resultAttrBitMin = item.attribute?.bitMin || null;
                         const resultAttrText = item.attribute?.text || '';
                         
-                        // 속성 BIT로 유사도 계산 (속성 검색이므로 속성 BIT를 우선 비교)
-                        let similarity = 0;
-                        if (resultAttrBitMax !== null && resultAttrBitMin !== null) {
-                          // 정확히 일치하는 속성 (텍스트 또는 BIT 값)은 100%
-                          if (resultAttrText === searchAttributeText) {
-                            similarity = 1.0;
-                          } else {
-                            // BIT 값이 정확히 일치하는 경우도 100%
-                            const bitMaxDiff = Math.abs((attrBits.max || 0) - (resultAttrBitMax || 0));
-                            const bitMinDiff = Math.abs((attrBits.min || 0) - (resultAttrBitMin || 0));
-                            if (bitMaxDiff === 0 && bitMinDiff === 0) {
-                              similarity = 1.0;
-                            } else {
-                              // 속성 BIT 값으로 유사도 계산
-                              similarity = calculateSimilarity(attrBits.max, attrBits.min, resultAttrBitMax, resultAttrBitMin);
-                            }
-                          }
-                        } else if (item.similarity) {
-                          // 서버에서 반환된 유사도 사용
-                          similarity = item.similarity;
-                          // 텍스트가 정확히 일치하면 100%로 오버라이드
-                          if (resultAttrText === searchAttributeText) {
-                            similarity = 1.0;
-                          }
-                        }
+                        // 속성 BIT로 유사도 계산 (공통 모듈 사용)
+                        const similarity = window.SearchAlgorithm.calculateAttributeSimilarity(
+                          searchAttributeText,
+                          attrBits.max,
+                          attrBits.min,
+                          item
+                        );
                         
                         return {
                           ...item,
@@ -801,29 +789,15 @@ ${customPrompt ? `\n[추가 지시사항]\n${customPrompt}\n` : ''}
                   if (allAttrRes.ok) {
                     const allAttrData = await allAttrRes.json();
                     if (allAttrData.ok && allAttrData.attributes && allAttrData.attributes.length > 0) {
-                      // 검색 텍스트 BIT와 각 속성 BIT 간의 유사도 계산
-                      const similarAttributes = allAttrData.attributes
-                        .map(attr => {
-                          let similarity = 0;
-                          // 정확히 일치하는 속성 (텍스트 또는 BIT 값)은 100%
-                          if (attr.text === searchText.trim()) {
-                            similarity = 1.0;
-                          } else {
-                            // BIT 값이 정확히 일치하는 경우도 100%
-                            const bitMaxDiff = Math.abs((bitMax || 0) - (attr.bitMax || 0));
-                            const bitMinDiff = Math.abs((bitMin || 0) - (attr.bitMin || 0));
-                            if (bitMaxDiff === 0 && bitMinDiff === 0) {
-                              similarity = 1.0;
-                            } else {
-                              // 유사도 계산
-                              similarity = calculateSimilarity(bitMax, bitMin, attr.bitMax, attr.bitMin);
-                            }
-                          }
-                          return { ...attr, similarity };
-                        })
-                        .filter(attr => attr.similarity > 0.1) // 유사도 임계값 0.1
-                        .sort((a, b) => b.similarity - a.similarity)
-                        .slice(0, 10); // 상위 10개 속성만
+                      // 검색 텍스트 BIT와 각 속성 BIT 간의 유사도 계산 (공통 모듈 사용)
+                      const similarAttributes = window.SearchAlgorithm.findSimilarAttributes(
+                        searchText, 
+                        bitMax, 
+                        bitMin, 
+                        allAttrData.attributes, 
+                        0.1, 
+                        10
+                      );
                       
                       // 유사한 속성들의 데이터 조회
                       for (const similarAttr of similarAttributes) {
@@ -995,59 +969,114 @@ ${customPrompt ? `\n[추가 지시사항]\n${customPrompt}\n` : ''}
               console.warn('유사도 검색 오류:', e);
             }
           }
-
-          // 중복 제거 및 정렬
-          const seen = new Set();
-          const uniqueResults = [];
-          results.forEach(item => {
-            const key = `${item.t || ''}_${item.input || item.attribute?.text || ''}_${item.response || item.data?.text || item.s || ''}`;
-            if (!seen.has(key)) {
-              seen.add(key);
-              uniqueResults.push(item);
-            }
-          });
-
-          // 유사도가 계산되지 않은 항목에 대해 계산 시도
-          uniqueResults.forEach(item => {
-            if (item.similarity === undefined || item.similarity === null) {
-              const resultBitMax = item.data?.bitMax || item.max || item.nb_max || item.bit?.max || null;
-              const resultBitMin = item.data?.bitMin || item.min || item.nb_min || item.bit?.min || null;
-              item.similarity = calculateSimilarity(bitMax, bitMin, resultBitMax, resultBitMin);
-            }
-          });
           
-          // 정확히 일치하는 항목(유사도 1.0)을 먼저, 그 다음 유사도순으로 정렬
-          uniqueResults.sort((a, b) => {
-            const aIsExact = (a.similarity || 0) === 1.0;
-            const bIsExact = (b.similarity || 0) === 1.0;
-            if (aIsExact && !bIsExact) return -1;
-            if (!aIsExact && bIsExact) return 1;
-            // 둘 다 정확히 일치하거나 둘 다 아닌 경우 유사도순 정렬
-            return (b.similarity || 0) - (a.similarity || 0);
-          });
-          const finalResults = uniqueResults.slice(0, 20);
+          return results;
+        }
+        
+        async function autoSearch(bitMax, bitMin, searchText = null) {
+          if (!bitMax || !bitMin) return;
 
+          try {
+            $searchStatus.textContent = '검색 중...';
+            $searchStatus.style.color = '#007bff';
+
+            // 검색 옵션 가져오기
+            let searchOption = 'attribute'; // 기본값: 속성으로만 검색
+            if ($searchOptionAll && $searchOptionAll.checked) {
+              searchOption = 'all';
+            } else if ($searchOptionData && $searchOptionData.checked) {
+              searchOption = 'data';
+            } else if ($searchOptionAttribute && $searchOptionAttribute.checked) {
+              searchOption = 'attribute';
+            }
+
+            // 기본 검색 실행
+            let results = await executeSingleSearch(bitMax, bitMin, searchText, searchOption);
+            
+            // 추가 검색: 쉼표로 구분된 키워드 처리
+            const additionalKeywords = $additionalSearchInput && $additionalSearchInput.value.trim() 
+              ? $additionalSearchInput.value.trim().split(',').map(k => k.trim()).filter(k => k)
+              : [];
+            
+            if (additionalKeywords.length > 0 && searchText) {
+              // 각 추가 키워드에 대해 검색 수행
+              for (const additionalKeyword of additionalKeywords) {
+                const combinedSearchText = `${searchText},${additionalKeyword}`;
+                const combinedBits = calculateBitValues(combinedSearchText);
+                
+                if (combinedBits.max && combinedBits.min) {
+                  // 추가 검색 실행 (기존 검색과 동일한 로직)
+                  const additionalResults = await executeSingleSearch(
+                    combinedBits.max,
+                    combinedBits.min,
+                    combinedSearchText,
+                    searchOption
+                  );
+                  results.push(...additionalResults);
+                }
+              }
+            }
+
+          // 중복 제거 및 정렬 (공통 모듈 사용)
+          let finalResults = window.SearchAlgorithm.processSearchResults(results, bitMax, bitMin, 50);
+          
+          // 검색 텍스트가 있을 때 텍스트 정확 매칭 우선 정렬
+          if (searchText && searchText.trim()) {
+            const searchTextTrimmed = searchText.trim();
+            finalResults = finalResults.sort((a, b) => {
+              const aAttrText = (a.attribute?.text || a.input || '').trim();
+              const bAttrText = (b.attribute?.text || b.input || '').trim();
+              
+              // 텍스트가 정확히 일치하는 경우 우선
+              const aExactMatch = aAttrText === searchTextTrimmed || aAttrText.includes(searchTextTrimmed);
+              const bExactMatch = bAttrText === searchTextTrimmed || bAttrText.includes(searchTextTrimmed);
+              
+              if (aExactMatch && !bExactMatch) return -1;
+              if (!aExactMatch && bExactMatch) return 1;
+              
+              // 둘 다 정확히 일치하거나 둘 다 아닌 경우 유사도순 정렬
+              return (b.similarity || 0) - (a.similarity || 0);
+            });
+          }
+
+          // 검색 결과 저장 (필터링용)
+          lastSearchResults = finalResults;
+          
+          // 필터링 적용하여 렌더링
           renderResults(finalResults);
-          $resultCount.textContent = `${finalResults.length}개`;
-          $searchStatus.textContent = `✓ 검색 완료 (${finalResults.length}개 결과)`;
-          $searchStatus.style.color = '#28a745';
 
         } catch (e) {
           console.error('검색 오류:', e);
           $searchStatus.textContent = `✗ 검색 실패: ${e.message}`;
           $searchStatus.style.color = '#dc3545';
+          lastSearchResults = []; // 오류 발생 시 결과 초기화
         }
       }
 
       function renderResults(results) {
         $resultBody.innerHTML = '';
         
-        if (results.length === 0) {
-          $resultBody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">검색 결과가 없습니다.</td></tr>';
+        // 필터링 적용
+        let filteredResults = results;
+        if ($searchFilterInput && $searchFilterInput.value.trim()) {
+          const filterKeyword = $searchFilterInput.value.trim().toLowerCase();
+          filteredResults = results.filter(item => {
+            const input = (item.input || item.attribute?.text || item.input_text || '').toLowerCase();
+            const response = (item.response || item.data?.text || item.s || item.output || '').toLowerCase();
+            return input.includes(filterKeyword) || response.includes(filterKeyword);
+          });
+        }
+        
+        if (filteredResults.length === 0) {
+          const message = ($searchFilterInput && $searchFilterInput.value.trim()) 
+            ? `검색 결과에 "${$searchFilterInput.value.trim()}" 키워드가 포함된 항목이 없습니다.`
+            : '검색 결과가 없습니다.';
+          $resultBody.innerHTML = `<tr><td colspan="7" class="text-center text-muted">${message}</td></tr>`;
+          $resultCount.textContent = `0개${($searchFilterInput && $searchFilterInput.value.trim()) ? ' (필터링됨)' : ''}`;
           return;
         }
 
-        results.forEach((item, idx) => {
+        filteredResults.forEach((item, idx) => {
           const tr = document.createElement('tr');
           
           const time = item.t ? new Date(item.t).toLocaleString('ko-KR') : (item.timestamp || '');
@@ -1061,7 +1090,7 @@ ${customPrompt ? `\n[추가 지시사항]\n${customPrompt}\n` : ''}
           
           const input = item.input || item.attribute?.text || item.input_text || '';
           const response = item.response || item.data?.text || item.s || item.output || '';
-          const similarity = item.similarity != null ? (item.similarity * 100).toFixed(1) + '%' : '100%';
+          const similarity = item.similarity != null ? (item.similarity * 100).toFixed(10) + '%' : '100%';
           
           const similarityClass = item.similarity >= 0.9 ? 'bg-success' : item.similarity >= 0.7 ? 'bg-warning' : 'bg-danger';
           
@@ -1077,6 +1106,19 @@ ${customPrompt ? `\n[추가 지시사항]\n${customPrompt}\n` : ''}
           
           $resultBody.appendChild(tr);
         });
+        
+        // 결과 개수 표시
+        const filterNote = ($searchFilterInput && $searchFilterInput.value.trim()) ? ` (${results.length}개 중 ${filteredResults.length}개 표시)` : '';
+        $resultCount.textContent = `${filteredResults.length}개${filterNote}`;
+        
+        // 검색 상태 업데이트 (필터링으로 인한 재렌더링인 경우)
+        if (lastSearchResults.length > 0 && $searchStatus) {
+          const baseMessage = $searchStatus.textContent.includes('✓ 검색 완료') 
+            ? $searchStatus.textContent.replace(/\(.*?\)/, '').replace(/\d+개.*표시/, '').trim()
+            : '✓ 검색 완료';
+          $searchStatus.textContent = `${baseMessage} (${filteredResults.length}개 결과${filterNote})`;
+          $searchStatus.style.color = '#28a745';
+        }
       }
 
       async function processInput(text) {
@@ -1143,14 +1185,93 @@ ${customPrompt ? `\n[추가 지시사항]\n${customPrompt}\n` : ''}
         }
       });
 
+      // localStorage 키 상수
+      const STORAGE_KEY_SEARCH_INPUT = 'gpt_auto_new_search_input';
+      const STORAGE_KEY_SEARCH_OPTION = 'gpt_auto_new_search_option';
+      const STORAGE_KEY_SEARCH_FILTER = 'gpt_auto_new_search_filter';
+      const STORAGE_KEY_ADDITIONAL_SEARCH = 'gpt_auto_new_additional_search';
+
+      // 추가 검색 기본값
+      const DEFAULT_ADDITIONAL_SEARCH = '등장인물,테마/주제,주요 사건,배경 설정,감정/분위기';
+
+      // localStorage에서 검색 설정 로드
+      function loadSearchSettingsFromStorage() {
+        try {
+          const savedSearchInput = localStorage.getItem(STORAGE_KEY_SEARCH_INPUT);
+          if (savedSearchInput && $searchInput) {
+            $searchInput.value = savedSearchInput;
+          }
+          
+          const savedSearchOption = localStorage.getItem(STORAGE_KEY_SEARCH_OPTION);
+          if (savedSearchOption) {
+            if ($searchOptionAttribute && savedSearchOption === 'attribute') {
+              $searchOptionAttribute.checked = true;
+            } else if ($searchOptionAll && savedSearchOption === 'all') {
+              $searchOptionAll.checked = true;
+            } else if ($searchOptionData && savedSearchOption === 'data') {
+              $searchOptionData.checked = true;
+            }
+          }
+          
+          const savedSearchFilter = localStorage.getItem(STORAGE_KEY_SEARCH_FILTER);
+          if (savedSearchFilter && $searchFilterInput) {
+            $searchFilterInput.value = savedSearchFilter;
+          }
+          
+          const savedAdditionalSearch = localStorage.getItem(STORAGE_KEY_ADDITIONAL_SEARCH);
+          if ($additionalSearchInput) {
+            // localStorage에 저장된 값이 있으면 사용, 없으면 기본값 사용
+            $additionalSearchInput.value = savedAdditionalSearch || DEFAULT_ADDITIONAL_SEARCH;
+            // 기본값을 사용한 경우 localStorage에 저장
+            if (!savedAdditionalSearch) {
+              localStorage.setItem(STORAGE_KEY_ADDITIONAL_SEARCH, DEFAULT_ADDITIONAL_SEARCH);
+            }
+          }
+        } catch (e) {
+          console.warn('검색 설정 로드 오류:', e);
+        }
+      }
+
+      // localStorage에 검색 설정 저장
+      function saveSearchSettingsToStorage() {
+        try {
+          if ($searchInput) {
+            localStorage.setItem(STORAGE_KEY_SEARCH_INPUT, $searchInput.value.trim());
+          }
+          
+          let selectedOption = 'attribute';
+          if ($searchOptionAll && $searchOptionAll.checked) {
+            selectedOption = 'all';
+          } else if ($searchOptionData && $searchOptionData.checked) {
+            selectedOption = 'data';
+          } else if ($searchOptionAttribute && $searchOptionAttribute.checked) {
+            selectedOption = 'attribute';
+          }
+          localStorage.setItem(STORAGE_KEY_SEARCH_OPTION, selectedOption);
+          
+          if ($searchFilterInput) {
+            localStorage.setItem(STORAGE_KEY_SEARCH_FILTER, $searchFilterInput.value.trim());
+          }
+          
+          if ($additionalSearchInput) {
+            localStorage.setItem(STORAGE_KEY_ADDITIONAL_SEARCH, $additionalSearchInput.value.trim());
+          }
+        } catch (e) {
+          console.warn('검색 설정 저장 오류:', e);
+        }
+      }
+
       // 실시간 조회 입력 이벤트 (자동 검색)
       $searchInput.addEventListener('input', (e) => {
         const text = e.target.value.trim();
         
+        // localStorage 자동 저장
+        saveSearchSettingsToStorage();
+        
         // 실시간 BIT 계산 및 표시
         const { max, min } = calculateBitValues(text);
-        $searchBitMax.textContent = max !== null ? max.toFixed(10) : '-';
-        $searchBitMin.textContent = min !== null ? min.toFixed(10) : '-';
+        $searchBitMax.textContent = max !== null ? max.toFixed(15) : '-';
+        $searchBitMin.textContent = min !== null ? min.toFixed(15) : '-';
 
         // 디바운싱으로 자동 검색
         if (searchInputTimer) clearTimeout(searchInputTimer);
@@ -1223,8 +1344,78 @@ ${customPrompt ? `\n[추가 지시사항]\n${customPrompt}\n` : ''}
         $realtimeOutput.innerHTML = '';
       });
 
+      // 검색 옵션 변경 이벤트 (localStorage 저장)
+      if ($searchOptionAttribute) {
+        $searchOptionAttribute.addEventListener('change', () => {
+          saveSearchSettingsToStorage();
+        });
+      }
+      if ($searchOptionAll) {
+        $searchOptionAll.addEventListener('change', () => {
+          saveSearchSettingsToStorage();
+        });
+      }
+      if ($searchOptionData) {
+        $searchOptionData.addEventListener('change', () => {
+          saveSearchSettingsToStorage();
+        });
+      }
+
+      // 검색 결과 필터링 이벤트
+      if ($searchFilterInput) {
+        let filterTimer = null;
+        $searchFilterInput.addEventListener('input', () => {
+          // localStorage 자동 저장
+          saveSearchSettingsToStorage();
+          
+          // 디바운싱으로 필터링 재적용
+          if (filterTimer) clearTimeout(filterTimer);
+          filterTimer = setTimeout(() => {
+            // 마지막 검색 결과를 다시 렌더링 (필터링 적용)
+            if (lastSearchResults.length > 0) {
+              renderResults(lastSearchResults);
+            }
+          }, 300);
+        });
+      }
+
+      // 추가 검색 입력 이벤트 (자동 검색 트리거)
+      if ($additionalSearchInput) {
+        let additionalSearchTimer = null;
+        $additionalSearchInput.addEventListener('input', () => {
+          // localStorage 자동 저장
+          saveSearchSettingsToStorage();
+          
+          // 실시간 조회 입력이 있고 검색이 이미 실행된 경우, 추가 검색으로 재검색
+          const searchText = $searchInput ? $searchInput.value.trim() : '';
+          if (searchText && lastSearchInput === searchText) {
+            const searchBits = calculateBitValues(searchText);
+            if (searchBits.max && searchBits.min) {
+              // 디바운싱으로 재검색
+              if (additionalSearchTimer) clearTimeout(additionalSearchTimer);
+              additionalSearchTimer = setTimeout(() => {
+                autoSearch(searchBits.max, searchBits.min, searchText);
+              }, 800);
+            }
+          }
+        });
+      }
+
       // 초기화
+      loadSearchSettingsFromStorage();
       addOutput('GPT AI 자동화 시스템이 준비되었습니다.', 'info');
+      
+      // 저장된 검색 입력이 있으면 자동 검색
+      if ($searchInput && $searchInput.value.trim()) {
+        const searchText = $searchInput.value.trim();
+        const searchBits = calculateBitValues(searchText);
+        if (searchBits.max && searchBits.min) {
+          setTimeout(() => {
+            lastSearchInput = searchText;
+            autoSearch(searchBits.max, searchBits.min, searchText);
+          }, 500);
+        }
+      }
     })();
     </script>
 </body>

@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>소설 구성 요소 관리</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="js/searchAlgorithm.js"></script>
     <style>
         body {
             background-color: #f5f5f5;
@@ -29,9 +30,7 @@
             background: white;
         }
         .attribute-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
+            text-align: left;
             margin-bottom: 10px;
         }
         .attribute-name {
@@ -210,6 +209,31 @@
                             >
                             <small class="text-muted">입력하면 자동으로 속성 목록이 불러와집니다.</small>
                         </div>
+                        
+                        <!-- 추가 검색 -->
+                        <div class="mb-3 pb-3 border-bottom">
+                            <label class="form-label fw-bold small mb-1">➕ 추가 검색 (선택사항)</label>
+                            <input 
+                                type="text" 
+                                id="additionalSearchInput" 
+                                class="form-control form-control-sm" 
+                                placeholder="쉼표로 구분하여 추가 검색 키워드를 입력하세요"
+                            >
+                            <small class="text-muted">기본 검색어에 쉼표로 구분된 키워드를 각각 추가하여 검색합니다.</small>
+                        </div>
+                        
+                        <!-- 검색 결과 필터링 -->
+                        <div class="mb-3 pb-3 border-bottom">
+                            <label class="form-label fw-bold small mb-1">🔍 검색 결과 필터링 (선택사항)</label>
+                            <input 
+                                type="text" 
+                                id="searchFilterInput" 
+                                class="form-control form-control-sm" 
+                                placeholder="검색 결과를 추가로 필터링할 키워드를 입력하세요..."
+                            >
+                            <small class="text-muted">검색 결과에서 이 키워드가 포함된 항목만 표시합니다.</small>
+                        </div>
+                        
                         <div id="attributesList"></div>
                     </div>
                 </div>
@@ -418,6 +442,8 @@
         const $attributesList = document.getElementById('attributesList');
         const $refreshBtn = document.getElementById('refreshBtn');
         const $attributeFilterInput = document.getElementById('attributeFilterInput');
+        const $additionalSearchInput = document.getElementById('additionalSearchInput');
+        const $searchFilterInput = document.getElementById('searchFilterInput');
         
         // 로그 관련
         const $logContainer = document.getElementById('logContainer');
@@ -522,8 +548,8 @@
                 
                 if (chapterText) {
                     const chapterBits = calculateBitValues(chapterText);
-                    chapterBitMax = chapterBits.max !== null && chapterBits.max !== undefined ? chapterBits.max.toFixed(10) : '-';
-                    chapterBitMin = chapterBits.min !== null && chapterBits.min !== undefined ? chapterBits.min.toFixed(10) : '-';
+                    chapterBitMax = chapterBits.max !== null && chapterBits.max !== undefined ? chapterBits.max.toFixed(15) : '-';
+                    chapterBitMin = chapterBits.min !== null && chapterBits.min !== undefined ? chapterBits.min.toFixed(15) : '-';
                     console.log(`챕터 ${idx} BIT 계산:`, { chapterText, bitMax: chapterBitMax, bitMin: chapterBitMin });
                 }
                 
@@ -612,6 +638,11 @@
                 $attributeFilterInput.value = novelTitle;
             } else {
                 $attributeFilterInput.value = '';
+            }
+            
+            // 속성 필터 변경 시 검색 결과 필터링 동기화
+            if (typeof syncAttributeFilterToSearchFilter === 'function') {
+                syncAttributeFilterToSearchFilter();
             }
             
             console.log('필터 입력란 동기화:', { novelTitle, chapterText, value: $attributeFilterInput.value });
@@ -807,8 +838,8 @@
             }
             
             const bits = calculateBitValues(title);
-            $novelTitleBitMax.textContent = bits.max !== null && bits.max !== undefined ? bits.max.toFixed(10) : '-';
-            $novelTitleBitMin.textContent = bits.min !== null && bits.min !== undefined ? bits.min.toFixed(10) : '-';
+            $novelTitleBitMax.textContent = bits.max !== null && bits.max !== undefined ? bits.max.toFixed(15) : '-';
+            $novelTitleBitMin.textContent = bits.min !== null && bits.min !== undefined ? bits.min.toFixed(15) : '-';
         }
         
         // 소설 제목 변경 시 속성 목록 새로고침
@@ -1494,10 +1525,10 @@ ${customPrompt}
         function displayExtractedAttributes() {
             let html = '<div class="row">';
             extractedAttributesList.forEach((item, idx) => {
-                const attrMax = item.attributeBitMax !== null && item.attributeBitMax !== undefined ? item.attributeBitMax.toFixed(10) : '-';
-                const attrMin = item.attributeBitMin !== null && item.attributeBitMin !== undefined ? item.attributeBitMin.toFixed(10) : '-';
-                const dataMax = item.dataBitMax !== null && item.dataBitMax !== undefined ? item.dataBitMax.toFixed(10) : '-';
-                const dataMin = item.dataBitMin !== null && item.dataBitMin !== undefined ? item.dataBitMin.toFixed(10) : '-';
+                const attrMax = item.attributeBitMax !== null && item.attributeBitMax !== undefined ? item.attributeBitMax.toFixed(15) : '-';
+                const attrMin = item.attributeBitMin !== null && item.attributeBitMin !== undefined ? item.attributeBitMin.toFixed(15) : '-';
+                const dataMax = item.dataBitMax !== null && item.dataBitMax !== undefined ? item.dataBitMax.toFixed(15) : '-';
+                const dataMin = item.dataBitMin !== null && item.dataBitMin !== undefined ? item.dataBitMin.toFixed(15) : '-';
                 const saveStatus = item.saveStatus || 'pending'; // pending, saving, success, duplicate, error
                 const saveMessage = item.saveMessage || '';
                 
@@ -1604,7 +1635,7 @@ ${customPrompt}
                         const nameText = nameElement.textContent.trim();
                         // 정확한 일치 또는 부분 포함 확인
                         if (nameText === attributeText.trim() || attributeText.trim().includes(nameText) || nameText.includes(attributeText.trim())) {
-                            targetElement = item;
+                        targetElement = item;
                             return;
                         }
                     }
@@ -1632,7 +1663,7 @@ ${customPrompt}
                 // 속성 목록이 비어있거나 로딩 중일 때만 새로고침
                 if (attributeItems.length === 0) {
                     console.log('속성 목록이 비어있음. 새로고침 후 재시도');
-                    loadAttributes().then(() => {
+                loadAttributes().then(() => {
                         // 충분한 시간을 두고 재시도 (렌더링 완료 대기)
                         setTimeout(() => {
                             scrollToAttribute(bitMax, bitMin, attributeText);
@@ -1645,25 +1676,95 @@ ${customPrompt}
         }
 
 
-        // 속성에 기존 데이터가 있는지 확인하는 함수
-        async function checkExistingData(attributeBitMax, attributeBitMin, novelTitle, currentChapter) {
+        // 속성에 기존 데이터가 있는지 확인하는 함수 (gpt_auto_new와 동일한 필터링)
+        async function checkExistingData(attributeBitMax, attributeBitMin, novelTitle, currentChapter, attributeText = null, dataText = null) {
             try {
                 // 속성의 데이터 조회
-                const dataUrl = getServerUrl(`/api/attributes/data?bitMax=${attributeBitMax}&bitMin=${attributeBitMin}&limit=10`);
+                const dataUrl = getServerUrl(`/api/attributes/data?bitMax=${attributeBitMax}&bitMin=${attributeBitMin}&limit=100`);
                 const dataRes = await fetch(dataUrl);
                 
                 if (dataRes.ok) {
                     const dataData = await dataRes.json();
                     if (dataData.ok && dataData.items && dataData.items.length > 0) {
-                        // 소설/챕터 정보가 있으면 필터링
+                        // gpt_auto_new와 동일한 필터링: 속성 텍스트, 소설 제목, 챕터 번호와 제목 모두 비교
                         if (novelTitle && currentChapter) {
                             const filtered = dataData.items.filter(dataItem => {
-                                return dataItem.novel && dataItem.novel.title === novelTitle &&
-                                       dataItem.chapter && dataItem.chapter.number === currentChapter.number;
+                                // 속성 텍스트가 제공된 경우 속성 텍스트 정확히 일치해야 함 (필수)
+                                if (attributeText) {
+                                    if (!dataItem.attribute || !dataItem.attribute.text) {
+                                        return false; // 속성 텍스트가 없으면 제외
+                                    }
+                                    const itemAttrText = dataItem.attribute.text.trim();
+                                    const targetAttrText = attributeText.trim();
+                                    if (itemAttrText !== targetAttrText) {
+                                        return false; // 속성 텍스트가 다르면 제외
+                                    }
+                                } else {
+                                    // attributeText가 제공되지 않은 경우도 체크
+                                    return false; // 속성 텍스트 없이는 중복 확인 불가
+                                }
+                                
+                                // 소설 제목 정확히 일치
+                                const novelMatch = dataItem.novel && 
+                                                   dataItem.novel.title && 
+                                                   dataItem.novel.title.trim() === novelTitle.trim();
+                                if (!novelMatch) return false;
+                                
+                                // 챕터 번호 정확히 일치
+                                const chapterNumberMatch = dataItem.chapter && 
+                                                          dataItem.chapter.number && 
+                                                          dataItem.chapter.number.trim() === (currentChapter.number || '').trim();
+                                if (!chapterNumberMatch) return false;
+                                
+                                // 챕터 제목 정확히 일치 (제목이 있는 경우)
+                                const chapterTitleMatch = !currentChapter.title || 
+                                                          (dataItem.chapter && 
+                                                           dataItem.chapter.title && 
+                                                           dataItem.chapter.title.trim() === currentChapter.title.trim());
+                                if (!chapterTitleMatch) return false;
+                                
+                                // 데이터 텍스트가 제공된 경우 데이터 텍스트도 비교 (같은 속성에 같은 데이터가 있으면 중복)
+                                if (dataText) {
+                                    const existingDataText = dataItem.data?.text || dataItem.text || '';
+                                    if (existingDataText.trim() === dataText.trim()) {
+                                        // 같은 속성 + 같은 데이터 = 중복
+                                        return true;
+                                    }
+                                    // 속성은 같지만 데이터가 다르면 중복 아님
+                                    return false;
+                                }
+                                
+                                // 데이터 텍스트 비교 없이 속성만 일치하면 중복으로 간주
+                                return true;
+                            });
+                            
+                            console.log('기존 데이터 필터링 결과', {
+                                totalItems: dataData.items.length,
+                                filteredCount: filtered.length,
+                                novelTitle,
+                                currentChapter,
+                                attributeText,
+                                dataTextLength: dataText ? dataText.length : 0,
+                                filteredItems: filtered.map(item => ({
+                                    novel: item.novel?.title,
+                                    chapter: `${item.chapter?.number}${item.chapter?.title ? ': ' + item.chapter.title : ''}`,
+                                    attribute: item.attribute?.text,
+                                    dataPreview: (item.data?.text || item.text || '').substring(0, 50)
+                                }))
+                            });
+                            
+                            return filtered.length > 0;
+                        }
+                        // 소설/챕터 정보가 없으면 속성 텍스트만으로 비교
+                        if (attributeText) {
+                            const filtered = dataData.items.filter(dataItem => {
+                                return dataItem.attribute && 
+                                       dataItem.attribute.text && 
+                                       dataItem.attribute.text.trim() === attributeText.trim();
                             });
                             return filtered.length > 0;
                         }
-                        // 소설/챕터 정보가 없으면 데이터가 있으면 true
+                        // 소설/챕터 정보가 없고 속성 텍스트도 없으면 데이터가 있으면 true
                         return true;
                     }
                 }
@@ -1803,17 +1904,64 @@ ${customPrompt}
                             continue;
                         }
                         
-                        if (!currentChapter) {
-                            console.warn('챕터가 선택되지 않았습니다.');
-                            item.saveStatus = 'error';
-                            item.saveMessage = '챕터를 선택하세요.';
-                            errorCount++;
-                            displayExtractedAttributes();
-                            continue;
+                        // 속성명 조합 로직 (먼저 처리하여 소설 제목/챕터 정보 파싱)
+                        // 프롬프트 2의 경우 item.attribute가 이미 "소설 제목 → 챕터" 형식일 수 있음
+                        const chapterDisplay = `${currentChapter.number || ''}${currentChapter.title ? `: ${currentChapter.title}` : ''}`;
+                        let combinedAttributeText;
+                        let finalNovelTitle = novelTitle;
+                        let finalChapter = currentChapter;
+                        
+                        // 프롬프트 2 형식 확인 및 파싱
+                        const hasArrow = item.attribute.includes(' → ');
+                        const startsWithNovelTitle = item.attribute.trim().startsWith(novelTitle.trim());
+                        
+                        if (hasArrow && startsWithNovelTitle) {
+                            // 이미 "소설 제목 → 챕터" 형식이면 그대로 사용 (프롬프트 2)
+                            combinedAttributeText = item.attribute.trim();
+                            
+                            // 속성 텍스트에서 소설 제목과 챕터 정보 파싱
+                            const parts = combinedAttributeText.split(' → ');
+                            if (parts.length >= 2) {
+                                finalNovelTitle = parts[0].trim();
+                                const chapterPart = parts[1].trim(); // "챕터 3: 제2장"
+                                
+                                // 챕터 정보 파싱
+                                const chapterMatch = chapterPart.match(/^챕터\s*(\d+)(?:\s*:\s*(.+))?/);
+                                if (chapterMatch) {
+                                    const chapterNum = chapterMatch[1];
+                                    const chapterTitle = chapterMatch[2] || '';
+                                    
+                                    // 현재 챕터 목록에서 해당 챕터 찾기
+                                    const foundChapter = chapters.find(ch => 
+                                        (ch.number || '').trim() === chapterNum && 
+                                        (ch.title || '').trim() === chapterTitle.trim()
+                                    );
+                                    
+                                    if (foundChapter) {
+                                        finalChapter = foundChapter;
+                                    } else {
+                                        // 챕터를 찾을 수 없으면 임시 객체 생성
+                                        finalChapter = { number: chapterNum, title: chapterTitle };
+                                    }
+                                }
+                            }
+                        } else {
+                            // 일반 형식: "소설 제목 → 챕터 → 속성명"
+                            combinedAttributeText = `${novelTitle} → ${chapterDisplay} → ${item.attribute}`;
+                            
+                            // 챕터 검증
+                            if (!finalChapter) {
+                                console.warn('챕터가 선택되지 않았습니다.');
+                                item.saveStatus = 'error';
+                                item.saveMessage = '챕터를 선택하세요.';
+                                errorCount++;
+                                displayExtractedAttributes();
+                                continue;
+                            }
                         }
 
-                        // 소설 제목 BIT 계산
-                        const novelTitleBits = calculateBitValues(novelTitle);
+                        // 소설 제목 BIT 계산 (파싱된 값 사용)
+                        const novelTitleBits = calculateBitValues(finalNovelTitle);
                         if (novelTitleBits.max === null || novelTitleBits.min === null) {
                             console.warn('소설 제목 BIT 계산 실패');
                             item.saveStatus = 'error';
@@ -1823,8 +1971,8 @@ ${customPrompt}
                             continue;
                         }
 
-                        // 챕터 BIT 계산 (챕터 번호 + 제목을 조합)
-                        const chapterText = `${currentChapter.number || ''} ${currentChapter.title || ''}`.trim();
+                        // 챕터 BIT 계산 (챕터 번호 + 제목을 조합, 파싱된 값 사용)
+                        const chapterText = `${finalChapter.number || ''} ${finalChapter.title || ''}`.trim();
                         const chapterBits = calculateBitValues(chapterText);
                         if (chapterBits.max === null || chapterBits.min === null) {
                             console.warn('챕터 BIT 계산 실패');
@@ -1834,10 +1982,6 @@ ${customPrompt}
                             displayExtractedAttributes();
                             continue;
                         }
-
-                        // 속성명을 "소설 제목 → 챕터 → 속성명" 형식으로 조합
-                        const chapterDisplay = `${currentChapter.number || ''}${currentChapter.title ? `: ${currentChapter.title}` : ''}`;
-                        const combinedAttributeText = `${novelTitle} → ${chapterDisplay} → ${item.attribute}`;
                         
                         // 조합된 속성명으로 BIT 값 재계산
                         const combinedAttributeBits = calculateBitValues(combinedAttributeText);
@@ -1850,12 +1994,14 @@ ${customPrompt}
                             continue;
                         }
                         
-                        // 저장 전에 기존 데이터 확인
+                        // 저장 전에 기존 데이터 확인 (파싱된 값 사용, gpt_auto_new와 동일한 필터링)
                         const hasExistingData = await checkExistingData(
                             combinedAttributeBits.max,
                             combinedAttributeBits.min,
-                            novelTitle,
-                            currentChapter
+                            finalNovelTitle,
+                            finalChapter,
+                            combinedAttributeText,
+                            item.data // 데이터 텍스트도 비교
                         );
                         
                         if (hasExistingData) {
@@ -1870,9 +2016,9 @@ ${customPrompt}
                         
                         console.log(`속성 저장 시도: ${combinedAttributeText}`, { 
                             originalAttribute: item.attribute,
-                            novelTitle, 
+                            finalNovelTitle, 
                             novelTitleBits,
-                            chapter: currentChapter,
+                            finalChapter,
                             chapterBits,
                             combinedAttributeBits
                         });
@@ -1887,10 +2033,10 @@ ${customPrompt}
                                 text: item.data,
                                 dataBitMax: item.dataBitMax,
                                 dataBitMin: item.dataBitMin,
-                                novelTitle: novelTitle,
+                                novelTitle: finalNovelTitle,
                                 novelTitleBitMax: novelTitleBits.max,
                                 novelTitleBitMin: novelTitleBits.min,
-                                chapter: currentChapter,
+                                chapter: finalChapter,
                                 chapterBitMax: chapterBits.max,
                                 chapterBitMin: chapterBits.min
                             })
@@ -2345,9 +2491,11 @@ ${savedAttributeInfo}`;
 
                 // 추출된 속성 처리 (attributeFromInput은 위에서 이미 선언됨)
                 extractedAttributesList = parsed.map(item => {
-                    // 프롬프트 2일 때는 속성 입력란의 값을 사용 (소설 제목 → 챕터 형식)
-                    // 속성 입력란에 값이 있으면 그것을 사용, 없으면 파싱된 속성명 사용
-                    const attribute = (attributeFromInput && attributeFromInput.trim()) ? attributeFromInput.trim() : (item.attribute?.trim() || '');
+                    // 프롬프트 2일 때는 속성 입력란의 값을 그대로 속성으로 사용
+                    // "다크 판타지 → 챕터 3: 제2장" 형식의 값이 있으면 그것을 속성으로 사용
+                    const attribute = (attributeFromInput && attributeFromInput.trim()) 
+                        ? attributeFromInput.trim() 
+                        : (item.attribute?.trim() || selectedAttribute || '');
                     let dataText = item.data?.trim() || '';
                     
                     // 마크다운 문자 제거
@@ -2413,13 +2561,218 @@ ${savedAttributeInfo}`;
             const text = e.target.value.trim();
             if (text) {
                 const { max, min } = calculateBitValues(text);
-                $newDataMax.textContent = max !== null ? max.toFixed(10) : '-';
-                $newDataMin.textContent = min !== null ? min.toFixed(10) : '-';
+                $newDataMax.textContent = max !== null ? max.toFixed(15) : '-';
+                $newDataMin.textContent = min !== null ? min.toFixed(15) : '-';
             } else {
                 $newDataMax.textContent = '-';
                 $newDataMin.textContent = '-';
             }
         });
+
+        // ===== 필터링 함수들 (분리된 모듈) =====
+        
+        /**
+         * 경로가 정확히 일치하는지 확인 (경로 필터링용)
+         * @param {string} filterPath - 필터 경로 (예: "다크 판타지 → 챕터 3: 제2장")
+         * @param {string} targetPath - 대상 경로 (예: "다크 판타지 → 챕터 3: 제2장" 또는 "다크 판타지 → 챕터 3: 제2장 → 배경 설정")
+         * @returns {boolean} 일치 여부
+         */
+        function matchPathExact(filterPath, targetPath) {
+            if (!filterPath || !targetPath) return false;
+            
+            const filterLower = filterPath.toLowerCase().trim();
+            const targetLower = targetPath.toLowerCase().trim();
+            
+            // 정확히 일치
+            if (filterLower === targetLower) return true;
+            
+            // 둘 다 경로 형식인 경우
+            if (filterLower.includes(' → ') && targetLower.includes(' → ')) {
+                const filterParts = filterLower.split(' → ').map(p => p.trim());
+                const targetParts = targetLower.split(' → ').map(p => p.trim());
+                
+                // 필터 경로가 대상 경로의 시작 부분과 일치하는지 확인
+                if (filterParts.length <= targetParts.length) {
+                    for (let i = 0; i < filterParts.length; i++) {
+                        if (filterParts[i] !== targetParts[i]) {
+                            return false;
+                        }
+                    }
+                    return true;
+                }
+            }
+            
+            return false;
+        }
+        
+        /**
+         * 데이터 항목이 필터 키워드와 일치하는지 확인
+         * @param {Object} data - 데이터 객체
+         * @param {string} filterKeyword - 필터 키워드 (소문자)
+         * @param {string} attributeText - 속성 텍스트 (소문자)
+         * @returns {boolean} 일치 여부
+         */
+        function filterDataByKeyword(data, filterKeyword, attributeText) {
+            if (!filterKeyword || !filterKeyword.trim()) return true;
+            
+            const filterLower = filterKeyword.toLowerCase().trim();
+            
+            // 1. 데이터의 attribute 필드 확인
+            if (data.attribute) {
+                let dataAttributeText = '';
+                if (typeof data.attribute === 'object' && data.attribute !== null && data.attribute.text) {
+                    dataAttributeText = (data.attribute.text || '').toLowerCase().trim();
+                } else if (typeof data.attribute === 'string') {
+                    dataAttributeText = (data.attribute || '').toLowerCase().trim();
+                }
+                
+                if (dataAttributeText) {
+                    // 경로 필터링: 정확한 경로 일치만 허용
+                    if (filterLower.includes(' → ')) {
+                        if (matchPathExact(filterLower, dataAttributeText)) {
+                            return true;
+                        }
+                    } else {
+                        // 일반 키워드: 부분 일치 허용
+                        if (dataAttributeText.includes(filterLower)) {
+                            return true;
+                        }
+                    }
+                }
+            }
+            
+            // 2. 속성 텍스트 확인
+            if (attributeText) {
+                const attrTextLower = attributeText.toLowerCase().trim();
+                
+                // 경로 필터링: 정확한 경로 일치만 허용
+                if (filterLower.includes(' → ')) {
+                    if (matchPathExact(filterLower, attrTextLower)) {
+                        return true;
+                    }
+                } else {
+                    // 일반 키워드: 부분 일치 허용
+                    if (attrTextLower.includes(filterLower)) {
+                        return true;
+                    }
+                }
+            }
+            
+            return false;
+        }
+        
+        /**
+         * 데이터 리스트를 필터 키워드로 필터링
+         * @param {Array} dataList - 데이터 리스트
+         * @param {string} filterKeyword - 필터 키워드
+         * @param {string} attributeText - 속성 텍스트
+         * @returns {Array} 필터링된 데이터 리스트
+         */
+        function filterDataListByKeyword(dataList, filterKeyword, attributeText) {
+            if (!dataList || !Array.isArray(dataList)) return [];
+            if (!filterKeyword || !filterKeyword.trim()) return dataList;
+            
+            const filterLower = filterKeyword.toLowerCase().trim();
+            
+            // 경로 필터링: 각 데이터 항목을 엄격하게 확인
+            return dataList.filter(data => {
+                // 1. 데이터의 attribute 필드 확인 (가장 우선)
+                if (data.attribute) {
+                    let dataAttributeText = '';
+                    if (typeof data.attribute === 'object' && data.attribute !== null && data.attribute.text) {
+                        dataAttributeText = (data.attribute.text || '').toLowerCase().trim();
+                    } else if (typeof data.attribute === 'string') {
+                        dataAttributeText = (data.attribute || '').toLowerCase().trim();
+                    }
+                    
+                    if (dataAttributeText) {
+                        // 경로 필터링: 정확한 경로 일치만 허용
+                        if (filterLower.includes(' → ')) {
+                            if (matchPathExact(filterLower, dataAttributeText)) {
+                                return true;
+                            }
+                            // 일치하지 않으면 제외
+                            return false;
+                        } else {
+                            // 일반 키워드: 부분 일치 허용
+                            if (dataAttributeText.includes(filterLower)) {
+                                return true;
+                            }
+                        }
+                    }
+                }
+                
+                // 2. 속성 텍스트 확인 (데이터의 attribute가 없거나 일치하지 않는 경우)
+                if (attributeText) {
+                    const attrTextLower = attributeText.toLowerCase().trim();
+                    
+                    // 경로 필터링: 정확한 경로 일치만 허용
+                    if (filterLower.includes(' → ')) {
+                        if (matchPathExact(filterLower, attrTextLower)) {
+                            return true;
+                        }
+                        // 일치하지 않으면 제외
+                        return false;
+                    } else {
+                        // 일반 키워드: 부분 일치 허용
+                        if (attrTextLower.includes(filterLower)) {
+                            return true;
+                        }
+                    }
+                }
+                
+                // 일치하지 않으면 제외
+                return false;
+            });
+        }
+        
+        /**
+         * 속성이 필터 키워드와 일치하는지 확인
+         * @param {Object} attr - 속성 객체
+         * @param {string} filterKeyword - 필터 키워드 (소문자)
+         * @returns {boolean} 일치 여부
+         */
+        function filterAttributeByKeyword(attr, filterKeyword) {
+            if (!filterKeyword || !filterKeyword.trim()) return true;
+            
+            const filterLower = filterKeyword.toLowerCase().trim();
+            const attributeText = (attr.text || '').toLowerCase().trim();
+            
+            // 1. 정확한 일치 확인
+            if (attributeText === filterLower || attributeText === filterLower.trim()) {
+                return true;
+            }
+            
+            // 2. 경로 필터링
+            if (filterLower.includes(' → ')) {
+                // 경로가 정확히 일치하는 경우만 허용
+                if (matchPathExact(filterLower, attributeText)) {
+                    return true;
+                }
+                
+                // 데이터의 attribute 필드 확인은 데이터 레벨 필터링에서 처리
+                // 속성 레벨에서는 속성 텍스트 일치만 확인
+                return false;
+            } else {
+                // 일반 키워드: 부분 일치 허용
+                return attributeText.includes(filterLower);
+            }
+        }
+        
+        /**
+         * 속성 리스트를 필터 키워드로 필터링
+         * @param {Array} attributes - 속성 리스트
+         * @param {string} filterKeyword - 필터 키워드
+         * @returns {Array} 필터링된 속성 리스트
+         */
+        function filterAttributesByKeyword(attributes, filterKeyword) {
+            if (!attributes || !Array.isArray(attributes)) return [];
+            if (!filterKeyword || !filterKeyword.trim()) return attributes;
+            
+            return attributes.filter(attr => filterAttributeByKeyword(attr, filterKeyword));
+        }
+        
+        // ===== 필터링 함수 끝 =====
 
         // 속성 목록 로드
         async function loadAttributes() {
@@ -2484,7 +2837,7 @@ ${savedAttributeInfo}`;
                         console.log('필터 파싱 결과 (소설 제목만):', { currentNovelTitle });
                     }
                 }
-                
+
                 // 각 속성의 데이터 조회
                 const attributePromises = data.attributes.map(async (attr) => {
                     try {
@@ -2529,8 +2882,22 @@ ${savedAttributeInfo}`;
                                     console.log('소설 제목 없음, 데이터 표시 안 함');
                                 }
                                 
-                                // data 객체만 추출
-                                const filteredDataList = dataList.map(item => item.data);
+                                // data 객체 추출 (attribute 정보도 함께 포함)
+                                const filteredDataList = dataList.map(item => {
+                                    const dataItem = {
+                                        ...item.data,
+                                        // 원본 item의 attribute 정보 포함 (log.ndjson 구조에 맞춤)
+                                        attribute: item.attribute || item.data?.attribute || null
+                                    };
+                                    // 디버깅: attribute 정보 확인
+                                    if (item.attribute) {
+                                        console.log(`데이터에 attribute 포함:`, {
+                                            attribute: item.attribute,
+                                            dataText: item.data?.text?.substring(0, 50)
+                                        });
+                                    }
+                                    return dataItem;
+                                });
                                 
                                 return {
                                     ...attr,
@@ -2552,7 +2919,7 @@ ${savedAttributeInfo}`;
                 const attributesWithData = await Promise.all(attributePromises);
                 console.log('속성 데이터 조회 완료', { count: attributesWithData.length });
 
-                // 필터 입력란의 값으로 속성 검색 (gpt_auto_new 방식 그대로 사용)
+                // 필터 입력란의 값으로 속성 검색 (gpt_auto_new의 autoSearch 함수와 완전히 동일한 로직)
                 let filteredAttributes = attributesWithData;
                 
                 if ($attributeFilterInput && $attributeFilterInput.value.trim()) {
@@ -2560,11 +2927,61 @@ ${savedAttributeInfo}`;
                     const filterBits = calculateBitValues(filterText);
                     
                     if (filterBits.max !== null && filterBits.min !== null && filterBits.max && filterBits.min) {
-                        console.log('속성 유사도 검색 시작 (gpt_auto_new 방식):', { filterText, filterBits });
+                        console.log('속성 유사도 검색 시작 (gpt_auto_new autoSearch와 동일):', { filterText, filterBits });
                         
                         try {
-                            // gpt_auto_new의 autoSearch 함수와 동일한 로직
-                            // 검색 텍스트 BIT로 모든 속성과 유사도 비교
+                            // gpt_auto_new의 autoSearch 함수와 완전히 동일한 로직
+                            // 검색 옵션: 기본값 'attribute' (속성으로만 검색)
+                            let searchOption = 'attribute';
+                            
+                            let searchResults = [];
+                            const searchText = filterText;
+                            
+                            // 1. 속성 검색 (gpt_auto_new autoSearch와 동일)
+                            if (searchOption === 'attribute' || searchOption === 'all') {
+                                try {
+                                    // 검색 텍스트가 있으면 그것을 우선 사용
+                                    const searchAttributeText = searchText ? searchText.trim() : '';
+                                    
+                                    if (searchAttributeText) {
+                                        const attrBits = calculateBitValues(searchAttributeText);
+                                        if (attrBits.max && attrBits.min) {
+                                            // 속성 유사도 검색 (threshold로 유사한 속성들을 찾음) - gpt_auto_new와 동일
+                                            const url = getServerUrl(`/api/attributes/data?bitMax=${attrBits.max}&bitMin=${attrBits.min}&limit=20&similarity=true&threshold=0.1`);
+                                            const res = await fetch(url);
+
+                                            if (res.ok) {
+                                                const data = await res.json();
+                                                if (data.ok && data.items) {
+                                                    searchResults.push(...data.items.map(item => {
+                                                        // 속성 검색인 경우: 검색 쿼리의 속성 BIT와 결과의 속성 BIT를 비교
+                                                        const resultAttrBitMax = item.attribute?.bitMax || null;
+                                                        const resultAttrBitMin = item.attribute?.bitMin || null;
+                                                        const resultAttrText = item.attribute?.text || '';
+                                                        
+                                                        // 속성 BIT로 유사도 계산 (공통 모듈 사용) - gpt_auto_new와 동일
+                                                        const similarity = window.SearchAlgorithm.calculateAttributeSimilarity(
+                                                            searchAttributeText,
+                                                            attrBits.max,
+                                                            attrBits.min,
+                                                            item
+                                                        );
+                                                        
+                                                        return {
+                                                            ...item,
+                                                            source: 'attribute_data',
+                                                            input: item.attribute?.text || searchAttributeText,
+                                                            response: item.data?.text || item.s || '',
+                                                            similarity: similarity
+                                                        };
+                                                    }));
+                                                }
+                                            }
+                                        }
+                                    }
+                                    
+                                    // 속성으로만 검색하는 경우, 검색 텍스트 BIT로 모든 속성과 유사도 비교 - gpt_auto_new와 동일
+                                    if (searchOption === 'attribute' && searchText && filterBits.max && filterBits.min) {
                             // 모든 속성 목록 가져오기
                             const allAttrUrl = getServerUrl('/api/attributes/all');
                             const allAttrRes = await fetch(allAttrUrl);
@@ -2572,82 +2989,274 @@ ${savedAttributeInfo}`;
                             if (allAttrRes.ok) {
                                 const allAttrData = await allAttrRes.json();
                                 if (allAttrData.ok && allAttrData.attributes && allAttrData.attributes.length > 0) {
-                                    // 유사도 계산 헬퍼 함수 (gpt_auto_new와 동일)
-                                    function calculateSimilarity(queryBitMax, queryBitMin, resultBitMax, resultBitMin) {
-                                        if (resultBitMax === null || resultBitMax === undefined || 
-                                            resultBitMin === null || resultBitMin === undefined) {
-                                            return 0;
+                                                // 검색 텍스트 BIT와 각 속성 BIT 간의 유사도 계산 (공통 모듈 사용) - gpt_auto_new와 동일
+                                    const similarAttributes = window.SearchAlgorithm.findSimilarAttributes(
+                                                    searchText, 
+                                        filterBits.max,
+                                        filterBits.min,
+                                        allAttrData.attributes,
+                                        0.1,
+                                        10
+                                    );
+                                    
+                                                // 유사한 속성들의 데이터 조회 - gpt_auto_new와 동일
+                                                for (const similarAttr of similarAttributes) {
+                                                    try {
+                                                        const dataUrl = getServerUrl(`/api/attributes/data?bitMax=${similarAttr.bitMax}&bitMin=${similarAttr.bitMin}&limit=5`);
+                                                        const dataRes = await fetch(dataUrl);
+                                                        
+                                                        if (dataRes.ok) {
+                                                            const dataData = await dataRes.json();
+                                                            if (dataData.ok && dataData.items) {
+                                                                searchResults.push(...dataData.items.map(item => ({
+                                                                    ...item,
+                                                                    source: 'attribute_similar',
+                                                                    input: item.attribute?.text || similarAttr.text,
+                                                                    response: item.data?.text || item.s || '',
+                                                                    similarity: similarAttr.similarity * 0.9 // 속성 유사도에 약간의 페널티 적용
+                                                                })));
+                                                            }
+                                                        }
+                                                    } catch (e) {
+                                                        console.warn(`속성 "${similarAttr.text}" 데이터 조회 오류:`, e);
+                                                    }
+                                                }
+                                            }
                                         }
-                                        const bitMaxDiff = Math.abs((queryBitMax || 0) - (resultBitMax || 0));
-                                        const bitMinDiff = Math.abs((queryBitMin || 0) - (resultBitMin || 0));
-                                        const distance = Math.sqrt(bitMaxDiff * bitMaxDiff + bitMinDiff * bitMinDiff);
-                                        return Math.max(0, 1 / (1 + distance));
                                     }
+                                } catch (e) {
+                                    console.warn('속성 데이터 검색 오류:', e);
+                                }
+                            }
+                            
+                            // 추가 검색: 쉼표로 구분된 키워드 처리 (gpt_auto_new와 동일)
+                            const additionalKeywords = $additionalSearchInput && $additionalSearchInput.value.trim() 
+                                ? $additionalSearchInput.value.trim().split(',').map(k => k.trim()).filter(k => k)
+                                : [];
+                            
+                            if (additionalKeywords.length > 0 && searchText) {
+                                // 각 추가 키워드에 대해 검색 수행
+                                for (const additionalKeyword of additionalKeywords) {
+                                    const combinedSearchText = `${searchText},${additionalKeyword}`;
+                                    const combinedBits = calculateBitValues(combinedSearchText);
                                     
-                                    // 검색 텍스트 BIT와 각 속성 BIT 간의 유사도 계산
-                                    const similarAttributes = allAttrData.attributes
-                                        .map(attr => {
-                                            const similarity = calculateSimilarity(filterBits.max, filterBits.min, attr.bitMax, attr.bitMin);
-                                            return { ...attr, similarity };
-                                        })
-                                        .filter(attr => attr.similarity > 0.1) // 유사도 임계값 0.1
-                                        .sort((a, b) => b.similarity - a.similarity)
-                                        .slice(0, 10); // 상위 10개 속성만 (gpt_auto_new와 동일)
-                                    
-                                    console.log('유사 속성 발견:', { count: similarAttributes.length });
-                                    
-                                    // 유사한 속성들의 데이터 재조회 (유사도 기반 검색 시 모든 데이터 포함)
-                                    const similarAttributeBitMap = new Map();
-                                    similarAttributes.forEach(attr => {
-                                        similarAttributeBitMap.set(`${attr.bitMax}_${attr.bitMin}`, attr);
-                                    });
-                                    
-                                    // 유사한 속성들의 데이터 재조회 (필터링 없이 모든 데이터 포함)
-                                    const similarAttributePromises = similarAttributes.map(async (similarAttr) => {
+                                    if (combinedBits.max && combinedBits.min) {
+                                        // 추가 검색 실행 (기본 검색과 동일한 로직)
                                         try {
-                                            const dataUrl = getServerUrl(`/api/attributes/data?bitMax=${similarAttr.bitMax}&bitMin=${similarAttr.bitMin}&limit=100`);
+                                            const combinedAttrBits = calculateBitValues(combinedSearchText);
+                                            if (combinedAttrBits.max && combinedAttrBits.min) {
+                                                const additionalUrl = getServerUrl(`/api/attributes/data?bitMax=${combinedAttrBits.max}&bitMin=${combinedAttrBits.min}&limit=20&similarity=true&threshold=0.1`);
+                                                const additionalRes = await fetch(additionalUrl);
+                                                
+                                                if (additionalRes.ok) {
+                                                    const additionalData = await additionalRes.json();
+                                                    if (additionalData.ok && additionalData.items) {
+                                                        searchResults.push(...additionalData.items.map(item => {
+                                                            const similarity = window.SearchAlgorithm.calculateAttributeSimilarity(
+                                                                combinedSearchText,
+                                                                combinedAttrBits.max,
+                                                                combinedAttrBits.min,
+                                                                item
+                                                            );
+                                                            
+                                                            return {
+                                                                ...item,
+                                                                source: 'attribute_data',
+                                                                input: item.attribute?.text || combinedSearchText,
+                                                                response: item.data?.text || item.s || '',
+                                                                similarity: similarity
+                                                            };
+                                                        }));
+                                                    }
+                                                }
+                                                
+                                                // 모든 속성과 유사도 비교
+                                                const allAttrUrl = getServerUrl('/api/attributes/all');
+                                                const allAttrRes = await fetch(allAttrUrl);
+                                                
+                                                if (allAttrRes.ok) {
+                                                    const allAttrData = await allAttrRes.json();
+                                                    if (allAttrData.ok && allAttrData.attributes && allAttrData.attributes.length > 0) {
+                                                        const similarAttributes = window.SearchAlgorithm.findSimilarAttributes(
+                                                            combinedSearchText,
+                                                            combinedBits.max,
+                                                            combinedBits.min,
+                                                            allAttrData.attributes,
+                                                            0.1,
+                                                            10
+                                                        );
+                                                        
+                                                        for (const similarAttr of similarAttributes) {
+                                                            try {
+                                                                const dataUrl = getServerUrl(`/api/attributes/data?bitMax=${similarAttr.bitMax}&bitMin=${similarAttr.bitMin}&limit=5`);
+                                                                const dataRes = await fetch(dataUrl);
+                                                                
+                                                                if (dataRes.ok) {
+                                                                    const dataData = await dataRes.json();
+                                                                    if (dataData.ok && dataData.items) {
+                                                                        searchResults.push(...dataData.items.map(item => ({
+                                                                            ...item,
+                                                                            source: 'attribute_similar',
+                                                                            input: item.attribute?.text || similarAttr.text,
+                                                                            response: item.data?.text || item.s || '',
+                                                                            similarity: similarAttr.similarity * 0.9
+                                                                        })));
+                                                                    }
+                                                                }
+                                                            } catch (e) {
+                                                                console.warn(`속성 "${similarAttr.text}" 데이터 조회 오류:`, e);
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        } catch (e) {
+                                            console.warn(`추가 검색 키워드 "${additionalKeyword}" 처리 오류:`, e);
+                                        }
+                                    }
+                                }
+                            }
+
+                            // 중복 제거 및 정렬 (공통 모듈 사용) - gpt_auto_new와 동일
+                            let finalResults = window.SearchAlgorithm.processSearchResults(searchResults, filterBits.max, filterBits.min, 50);
+                            
+                            // 검색 텍스트가 있을 때 텍스트 정확 매칭 우선 정렬 - gpt_auto_new와 동일
+                            if (searchText && searchText.trim()) {
+                                const searchTextTrimmed = searchText.trim();
+                                finalResults = finalResults.sort((a, b) => {
+                                    const aAttrText = (a.attribute?.text || a.input || '').trim();
+                                    const bAttrText = (b.attribute?.text || b.input || '').trim();
+                                    
+                                    // 텍스트가 정확히 일치하거나 포함되는 경우 우선
+                                    const aExactMatch = aAttrText === searchTextTrimmed || aAttrText.includes(searchTextTrimmed);
+                                    const bExactMatch = bAttrText === searchTextTrimmed || bAttrText.includes(searchTextTrimmed);
+                                    
+                                    if (aExactMatch && !bExactMatch) return -1;
+                                    if (!aExactMatch && bExactMatch) return 1;
+                                    
+                                    // 둘 다 정확히 일치하거나 둘 다 아닌 경우 유사도순 정렬
+                                    return (b.similarity || 0) - (a.similarity || 0);
+                                });
+                            }
+                            
+                            // 검색 결과를 속성 형식으로 변환 (novel_composition_new2 형식에 맞춤)
+                            const attributeMap = new Map();
+                            finalResults.forEach(item => {
+                                const attrText = item.attribute?.text || item.input || '';
+                                const attrBitMax = item.attribute?.bitMax || null;
+                                const attrBitMin = item.attribute?.bitMin || null;
+                                
+                                if (attrText && attrBitMax !== null && attrBitMin !== null) {
+                                    const key = `${attrBitMax}_${attrBitMin}`;
+                                    if (!attributeMap.has(key)) {
+                                        // 데이터 재조회 (novel_composition_new2 형식에 맞춤, attribute 정보 포함)
+                                        const dataList = item.data?.text ? [{
+                                            text: item.data.text,
+                                            bitMax: item.data.bitMax || item.bitMax || null,
+                                            bitMin: item.data.bitMin || item.bitMin || null,
+                                            // 원본 item의 attribute 정보 포함 (log.ndjson 구조에 맞춤)
+                                            attribute: item.attribute || item.data?.attribute || null
+                                        }] : [];
+                                        
+                                        attributeMap.set(key, {
+                                            text: attrText,
+                                            bitMax: attrBitMax,
+                                            bitMin: attrBitMin,
+                                            dataList: dataList,
+                                            dataCount: dataList.length,
+                                            similarity: item.similarity || 0
+                                        });
+                                    } else {
+                                        // 기존 속성에 데이터 추가
+                                        const existing = attributeMap.get(key);
+                                        if (item.data?.text) {
+                                            existing.dataList.push({
+                                                text: item.data.text,
+                                                bitMax: item.data.bitMax || item.bitMax || null,
+                                                bitMin: item.data.bitMin || item.bitMin || null,
+                                                // 원본 item의 attribute 정보 포함 (log.ndjson 구조에 맞춤)
+                                                attribute: item.attribute || item.data?.attribute || null
+                                            });
+                                            existing.dataCount = existing.dataList.length;
+                                        }
+                                    }
+                                }
+                            });
+                            
+                            // 속성별로 데이터 재조회 (limit=100으로 모든 데이터 가져오기)
+                            const similarAttributePromises = Array.from(attributeMap.values()).map(async (attr) => {
+                                try {
+                                    const dataUrl = getServerUrl(`/api/attributes/data?bitMax=${attr.bitMax}&bitMin=${attr.bitMin}&limit=100`);
                                             const dataRes = await fetch(dataUrl);
                                             if (dataRes.ok) {
                                                 const dataData = await dataRes.json();
                                                 if (dataData.ok && dataData.items) {
                                                     // 속성 자체를 데이터로 저장한 경우는 제외
                                                     let dataList = dataData.items
-                                                        .filter(item => item.data && item.data.text && item.data.text !== similarAttr.text);
-                                                    
-                                                    // 필터 입력 시 데이터 필터링 제거 (모든 데이터 표시)
-                                                    // data 객체만 추출
-                                                    const filteredDataList = dataList.map(item => item.data);
+                                                .filter(item => item.data && item.data.text && item.data.text !== attr.text)
+                                                .map(item => ({
+                                                    ...item.data,
+                                                    // 원본 item의 attribute 정보 포함 (log.ndjson 구조에 맞춤)
+                                                    attribute: item.attribute || item.data?.attribute || null
+                                                }));
                                                     
                                                     return {
-                                                        ...similarAttr,
-                                                        dataList: filteredDataList,
-                                                        dataCount: filteredDataList.length,
-                                                        similarity: similarAttr.similarity
+                                                ...attr,
+                                                dataList: dataList,
+                                                dataCount: dataList.length,
+                                                similarity: attr.similarity
                                                     };
                                                 }
                                             }
                                         } catch (e) {
-                                            console.warn(`속성 "${similarAttr.text}" 데이터 로드 실패:`, e);
+                                    console.warn(`속성 "${attr.text}" 데이터 로드 실패:`, e);
                                         }
                                         return {
-                                            ...similarAttr,
-                                            dataList: [],
-                                            dataCount: 0,
-                                            similarity: similarAttr.similarity
+                                    ...attr,
+                                    dataList: attr.dataList || [],
+                                    dataCount: attr.dataList?.length || 0,
+                                    similarity: attr.similarity
                                         };
                                     });
                                     
                                     // 유사한 속성들의 데이터 재조회 완료
                                     const similarAttributesWithData = await Promise.all(similarAttributePromises);
-                                    filteredAttributes = similarAttributesWithData.sort((a, b) => (b.similarity || 0) - (a.similarity || 0));
-                                    
-                                    console.log('속성 유사도 검색 완료 (gpt_auto_new 방식):', { 
+                            
+                            // gpt_auto_new와 동일한 정렬 순서 적용 (finalResults 순서 유지)
+                            // finalResults의 순서를 유지하면서 속성별로 그룹화된 결과 정렬
+                            const finalResultsOrder = new Map();
+                            finalResults.forEach((item, idx) => {
+                                const attrText = item.attribute?.text || item.input || '';
+                                const attrBitMax = item.attribute?.bitMax || null;
+                                const attrBitMin = item.attribute?.bitMin || null;
+                                if (attrText && attrBitMax !== null && attrBitMin !== null) {
+                                    const key = `${attrBitMax}_${attrBitMin}`;
+                                    if (!finalResultsOrder.has(key)) {
+                                        finalResultsOrder.set(key, idx);
+                                    }
+                                }
+                            });
+                            
+                            filteredAttributes = similarAttributesWithData.sort((a, b) => {
+                                const keyA = `${a.bitMax}_${a.bitMin}`;
+                                const keyB = `${b.bitMax}_${b.bitMin}`;
+                                const orderA = finalResultsOrder.get(keyA) ?? 999999;
+                                const orderB = finalResultsOrder.get(keyB) ?? 999999;
+                                
+                                // finalResults의 순서 우선
+                                if (orderA !== orderB) {
+                                    return orderA - orderB;
+                                }
+                                
+                                // 같은 순서인 경우 유사도순 정렬 (gpt_auto_new와 동일)
+                                return (b.similarity || 0) - (a.similarity || 0);
+                            });
+                            
+                            console.log('속성 유사도 검색 완료 (gpt_auto_new autoSearch와 동일):', { 
                                         filterText, 
                                         before: attributesWithData.length, 
                                         after: filteredAttributes.length 
                                     });
-                                }
-                            }
                         } catch (e) {
                             console.warn('속성 유사도 검색 오류:', e);
                             // 오류 발생 시 원본 목록 유지
@@ -2659,8 +3268,31 @@ ${savedAttributeInfo}`;
                     }
                 }
 
+                // 검색 결과 필터링 적용 (분리된 함수 사용)
+                let displayAttributes = filteredAttributes;
+                const searchFilterValue = $searchFilterInput ? $searchFilterInput.value.trim() : '';
+                if (searchFilterValue) {
+                    console.log('검색 결과 필터링 적용 시작', { 
+                        filterKeyword: searchFilterValue, 
+                        totalBeforeFilter: filteredAttributes.length 
+                    });
+                    
+                    // 속성 레벨 필터링
+                    displayAttributes = filterAttributesByKeyword(filteredAttributes, searchFilterValue);
+                    
+                    console.log('검색 결과 필터링 적용 완료', { 
+                        filterKeyword: searchFilterValue, 
+                        totalBeforeFilter: filteredAttributes.length,
+                        totalAfterFilter: displayAttributes.length
+                    });
+                }
+
                 // 속성 목록 렌더링
-                console.log('속성 목록 렌더링 시작');
+                console.log('속성 목록 렌더링 시작', { 
+                    total: filteredAttributes.length, 
+                    filtered: displayAttributes.length,
+                    filterKeyword: searchFilterValue || '(없음)'
+                });
                 
                 let html = '';
                 if (currentNovelTitle && currentChapter) {
@@ -2671,23 +3303,73 @@ ${savedAttributeInfo}`;
                     html += `<div class="mb-2 p-2 bg-warning rounded"><small class="text-danger">⚠️ 소설 제목을 입력하고 챕터를 입력하세요.</small></div>`;
                 }
 
-                if (filteredAttributes.length === 0 && ($attributeFilterInput && $attributeFilterInput.value.trim())) {
+                if (displayAttributes.length === 0) {
+                    if ($attributeFilterInput && $attributeFilterInput.value.trim()) {
                     html += `<div class="mb-2 p-2 bg-light rounded"><small class="text-muted">"${escapeHtml($attributeFilterInput.value.trim())}"와 유사한 속성이 없습니다. (유사도 임계값: 0.1 이상)</small></div>`;
+                    } else if (searchFilterValue) {
+                        html += `<div class="mb-2 p-2 bg-light rounded"><small class="text-muted">검색 결과에 "${escapeHtml(searchFilterValue)}" 키워드가 포함된 항목이 없습니다.</small></div>`;
+                    } else {
+                        html += `<div class="mb-2 p-2 bg-light rounded"><small class="text-muted">표시할 속성이 없습니다.</small></div>`;
+                    }
                 }
                 
-                filteredAttributes.forEach((attr) => {
-                    // 속성명에서 실제 속성명만 추출 (표시용)
-                    // "다크 판타지 → 챕터 1: 개요 → 등장인물" → "등장인물"
-                    let displayAttributeText = attr.text || '';
-                    const arrowParts = displayAttributeText.split(' → ');
-                    if (arrowParts.length >= 3) {
-                        // 마지막 부분이 실제 속성명
-                        displayAttributeText = arrowParts[arrowParts.length - 1];
+                displayAttributes.forEach((attr) => {
+                    // 속성 텍스트 파싱
+                    let attributeText = attr.text || '';
+                    const arrowParts = attributeText.split(' → ');
+                    
+                    // 챕터 구성이 포함되어 있지 않으면 표시하지 않음 (→ 가 1개 이상이어야 함, 즉 최소 "소설 제목 → 챕터" 형식)
+                    // 프롬프트 2 형식: "다크 판타지 → 챕터 3: 제2장" (→ 1개)
+                    // 프롬프트 1 형식: "다크 판타지 → 챕터 3: 제2장 → 등장인물" (→ 2개)
+                    if (arrowParts.length < 2) {
+                        return; // 이 속성은 스킵
                     }
+                    
+                    // 검색 결과 필터링: 데이터 레벨 필터링 (분리된 함수 사용, 강화된 필터링)
+                    let filteredDataList = attr.dataList || [];
+                    
+                    // 필터가 있는 경우만 데이터 레벨 필터링 적용
+                    if (searchFilterValue && searchFilterValue.trim()) {
+                        filteredDataList = filterDataListByKeyword(
+                            filteredDataList, 
+                            searchFilterValue, 
+                            attributeText
+                        );
+                        
+                        // 필터링 후 로그 (디버깅용)
+                        if (filteredDataList.length !== (attr.dataList || []).length) {
+                            console.log('데이터 레벨 필터링 적용:', {
+                                attributeText: attributeText.substring(0, 50),
+                                filterKeyword: searchFilterValue,
+                                before: (attr.dataList || []).length,
+                                after: filteredDataList.length,
+                                filteredData: filteredDataList.map(d => ({
+                                    hasAttribute: !!d.attribute,
+                                    attributeText: d.attribute?.text || d.attribute || '',
+                                    dataPreview: (d.text || '').substring(0, 30)
+                                }))
+                            });
+                        }
+                    }
+                    
+                    // 중복된 단어 제거 (순서 유지하면서 전체 배열에서 중복 제거)
+                    const uniqueParts = [];
+                    const seenParts = new Set();
+                    for (let i = 0; i < arrowParts.length; i++) {
+                        const currentPart = arrowParts[i].trim();
+                        // 이미 본 적이 없는 부분만 추가 (순서 유지)
+                        if (!seenParts.has(currentPart)) {
+                            uniqueParts.push(currentPart);
+                            seenParts.add(currentPart);
+                        }
+                    }
+                    
+                    // 중복 제거된 속성 텍스트 재구성
+                    const fullAttributeText = uniqueParts.join(' → ');
                     
                     // 유사도 표시 (필터 입력이 있는 경우)
                     const similarityBadge = ($attributeFilterInput && $attributeFilterInput.value.trim() && attr.similarity !== undefined) 
-                        ? `<span class="badge ${attr.similarity >= 0.9 ? 'bg-success' : attr.similarity >= 0.7 ? 'bg-warning' : 'bg-info'} ms-2">유사도 ${(attr.similarity * 100).toFixed(1)}%</span>`
+                        ? `<span class="badge ${attr.similarity >= 0.9 ? 'bg-success' : attr.similarity >= 0.7 ? 'bg-warning' : 'bg-info'} ms-2">유사도 ${(attr.similarity * 100).toFixed(10)}%</span>`
                         : '';
                     
                     html += `
@@ -2696,36 +3378,87 @@ ${savedAttributeInfo}`;
                              data-bit-min="${attr.bitMin}"
                              data-attribute-text="${escapeHtml(attr.text)}">
                             <div class="attribute-header">
-                                <div>
-                                    <span class="attribute-name">${escapeHtml(displayAttributeText)}</span>
+                                <div style="text-align: left;">
+                                    <span class="attribute-name">${escapeHtml(fullAttributeText)}</span>
                                     ${similarityBadge}
-                                    ${arrowParts.length >= 3 ? `<br><small class="text-muted">${escapeHtml(arrowParts.slice(0, -1).join(' → '))}</small>` : ''}
                                 </div>
+                                <div style="text-align: left; margin-top: 5px;">
                                 <small class="text-muted">
-                                    BIT: ${attr.bitMax.toFixed(6)}, ${attr.bitMin.toFixed(6)} | 
-                                    데이터 ${attr.dataCount}개
+                                        BIT: ${attr.bitMax.toFixed(15)}, ${attr.bitMin.toFixed(15)} | 데이터 ${attr.dataCount}개
                                 </small>
+                                </div>
                             </div>
                             <div class="data-list">
-                                ${attr.dataList.length > 0 ? attr.dataList.map((data, dataIdx) => {
+                                ${filteredDataList.length > 0 ? filteredDataList.map((data, dataIdx) => {
                                     const fullText = data.text || '';
                                     const displayText = fullText.length > 150 ? fullText.substring(0, 150) + '...' : fullText;
                                     const uniqueId = `data-${attr.bitMax}-${attr.bitMin}-${dataIdx}`;
                                     // 텍스트를 JSON.stringify로 안전하게 인코딩
                                     const safeText = JSON.stringify(fullText);
+                                    // 삭제 확인용 안전한 미리보기 텍스트 (HTML 이스케이프)
+                                    const safePreview = escapeHtml(fullText.substring(0, 50));
+                                    
+                                    // 데이터의 attribute 정보 표시 (log.ndjson 구조: item.attribute.text)
+                                    let dataAttributeText = '';
+                                    
+                                    // 디버깅: 전체 data 객체 확인
+                                    console.log('데이터 객체 확인:', {
+                                        hasAttribute: !!data.attribute,
+                                        attribute: data.attribute,
+                                        attributeType: typeof data.attribute,
+                                        keys: Object.keys(data)
+                                    });
+                                    
+                                    if (data.attribute) {
+                                        if (typeof data.attribute === 'object' && data.attribute !== null) {
+                                            dataAttributeText = data.attribute.text || data.attribute.toString();
+                                        } else if (typeof data.attribute === 'string') {
+                                            dataAttributeText = data.attribute;
+                                        }
+                                    }
+                                    
+                                    // 디버깅: attribute 정보 확인
+                                    if (dataAttributeText) {
+                                        console.log('데이터 attribute 정보 추출 성공:', {
+                                            attributeText: dataAttributeText,
+                                            dataText: fullText.substring(0, 30)
+                                        });
+                                    } else {
+                                        console.log('데이터 attribute 정보 없음:', {
+                                            data: data,
+                                            hasAttribute: !!data.attribute
+                                        });
+                                    }
+                                    
+                                    const dataAttributeHtml = dataAttributeText 
+                                        ? `<div class="small text-info mb-2" style="background-color: #e7f3ff; padding: 5px; border-radius: 3px; margin-bottom: 8px;"><strong>속성:</strong> ${escapeHtml(dataAttributeText)}</div>` 
+                                        : '';
+                                    
                                     return `
                                     <div class="data-item">
+                                        ${dataAttributeHtml}
                                         <strong style="word-break: break-word; display: block; margin-bottom: 8px;">${escapeHtml(displayText)}</strong>
-                                        <div class="d-flex justify-content-between align-items-center">
+                                        <div class="d-flex justify-content-between align-items-start">
                                             <small class="text-muted">
-                                                BIT: ${data.bitMax.toFixed(6)}, ${data.bitMin.toFixed(6)}
-                                            </small>
+                                                BIT: ${data.bitMax.toFixed(15)}, ${data.bitMin.toFixed(15)}
+                                        </small>
+                                            <div class="d-flex flex-column gap-1">
                                             <button class="btn btn-sm btn-outline-secondary" 
                                                     onclick="copyDataTextFromHidden('${uniqueId}'); return false;"
                                                     title="전체 텍스트 복사">
                                                 📋 복사
                                             </button>
-                                        </div>
+                                                <button class="btn btn-sm btn-outline-danger delete-data-btn" 
+                                                        data-attr-bit-max="${attr.bitMax}"
+                                                        data-attr-bit-min="${attr.bitMin}"
+                                                        data-bit-max="${data.bitMax}"
+                                                        data-bit-min="${data.bitMin}"
+                                                        data-text="${escapeHtml(fullText).replace(/"/g, '&quot;')}"
+                                                        title="데이터 삭제">
+                                                    🗑️ 삭제
+                                            </button>
+                                            </div>
+                                    </div>
                                         <input type="hidden" id="${uniqueId}" value="${escapeHtml(fullText).replace(/"/g, '&quot;')}">
                                     </div>
                                 `;
@@ -2737,22 +3470,185 @@ ${savedAttributeInfo}`;
 
                 $attributesList.innerHTML = html;
                 console.log('속성 목록 렌더링 완료', { renderedCount: filteredAttributes.length, total: attributesWithData.length });
+                
+                // 삭제 버튼 이벤트 리스너 등록
+                $attributesList.querySelectorAll('.delete-data-btn').forEach(btn => {
+                    btn.addEventListener('click', function(e) {
+                        e.preventDefault();
+                        const attrBitMax = parseFloat(this.getAttribute('data-attr-bit-max'));
+                        const attrBitMin = parseFloat(this.getAttribute('data-attr-bit-min'));
+                        const dataBitMax = parseFloat(this.getAttribute('data-bit-max'));
+                        const dataBitMin = parseFloat(this.getAttribute('data-bit-min'));
+                        const dataText = this.getAttribute('data-text') || '';
+                        deleteAttributeData(attrBitMax, attrBitMin, dataBitMax, dataBitMin, dataText);
+                    });
+                });
             } catch (e) {
                 console.error('속성 목록 로드 오류:', e);
                 $attributesList.innerHTML = `<div class="text-danger">✗ 로드 실패: ${e.message}</div>`;
             }
         }
 
+        // localStorage 키 상수
+        const STORAGE_KEY_ATTRIBUTE_FILTER = 'novel_composition_new2_attribute_filter';
+        const STORAGE_KEY_ADDITIONAL_SEARCH = 'novel_composition_new2_additional_search';
+        
+        // 추가 검색 기본값
+        const DEFAULT_ADDITIONAL_SEARCH = '등장인물,테마/주제,주요 사건,배경 설정,감정/분위기';
+
+        // localStorage에서 검색 설정 로드
+        function loadSearchSettingsFromStorage() {
+            try {
+                const savedAttributeFilter = localStorage.getItem(STORAGE_KEY_ATTRIBUTE_FILTER);
+                if (savedAttributeFilter && $attributeFilterInput) {
+                    $attributeFilterInput.value = savedAttributeFilter;
+                    // 동기화 함수가 정의되어 있으면 호출
+                    if (typeof syncAttributeFilterToSearchFilter === 'function') {
+                        syncAttributeFilterToSearchFilter();
+                    }
+                }
+                
+                const savedAdditionalSearch = localStorage.getItem(STORAGE_KEY_ADDITIONAL_SEARCH);
+                if ($additionalSearchInput) {
+                    // localStorage에 저장된 값이 있으면 사용, 없으면 기본값 사용
+                    $additionalSearchInput.value = savedAdditionalSearch || DEFAULT_ADDITIONAL_SEARCH;
+                    // 기본값을 사용한 경우 localStorage에 저장
+                    if (!savedAdditionalSearch) {
+                        localStorage.setItem(STORAGE_KEY_ADDITIONAL_SEARCH, DEFAULT_ADDITIONAL_SEARCH);
+                    }
+                }
+                
+                const savedSearchFilter = localStorage.getItem(STORAGE_KEY_SEARCH_FILTER);
+                // 속성 필터 값이 있으면 그것을 우선 사용 (양방향 동기화)
+                if ($attributeFilterInput && $attributeFilterInput.value.trim() && $searchFilterInput) {
+                    $searchFilterInput.value = $attributeFilterInput.value.trim();
+                } else if (savedSearchFilter && $searchFilterInput) {
+                    $searchFilterInput.value = savedSearchFilter;
+                    // 검색 결과 필터링 값이 있으면 속성 필터에도 동기화
+                    if ($attributeFilterInput) {
+                        $attributeFilterInput.value = savedSearchFilter;
+                        // 속성 필터 변경 시 검색 결과 필터링 동기화
+                        if (typeof syncAttributeFilterToSearchFilter === 'function') {
+                            syncAttributeFilterToSearchFilter();
+                        }
+                    }
+                }
+            } catch (e) {
+                console.warn('검색 설정 로드 오류:', e);
+            }
+        }
+
+        // localStorage에 검색 설정 저장
+        function saveSearchSettingsToStorage() {
+            try {
+                if ($attributeFilterInput) {
+                    localStorage.setItem(STORAGE_KEY_ATTRIBUTE_FILTER, $attributeFilterInput.value.trim());
+                }
+                
+                if ($additionalSearchInput) {
+                    localStorage.setItem(STORAGE_KEY_ADDITIONAL_SEARCH, $additionalSearchInput.value.trim());
+                }
+                
+                if ($searchFilterInput) {
+                    localStorage.setItem(STORAGE_KEY_SEARCH_FILTER, $searchFilterInput.value.trim());
+                }
+            } catch (e) {
+                console.warn('검색 설정 저장 오류:', e);
+            }
+        }
+
+        // 속성 필터와 검색 결과 필터링 동기화 함수 (전역에서 사용 가능하도록)
+        function syncAttributeFilterToSearchFilter() {
+            if ($attributeFilterInput && $searchFilterInput) {
+                const newValue = $attributeFilterInput.value.trim();
+                if ($searchFilterInput.value.trim() !== newValue) {
+                    $searchFilterInput.value = newValue;
+                    if (typeof saveSearchSettingsToStorage === 'function') {
+                        saveSearchSettingsToStorage();
+                    }
+                }
+            }
+        }
+
         // 속성 검색 필터 입력 이벤트
         if ($attributeFilterInput) {
             let filterTimer = null;
+            
+            // input 이벤트: 사용자가 직접 입력하는 경우
             $attributeFilterInput.addEventListener('input', () => {
+                // localStorage 자동 저장
+                saveSearchSettingsToStorage();
+                
+                // 검색 결과 필터링 입력란에 자동으로 속성 필터 값 동기화
+                syncAttributeFilterToSearchFilter();
+                
                 // 디바운싱으로 자동 로드
                 if (filterTimer) clearTimeout(filterTimer);
                 filterTimer = setTimeout(() => {
                     loadAttributes();
                 }, 500);
             });
+            
+            // change 이벤트: 값이 변경되는 모든 경우 (예: 프로그램적으로 변경)
+            $attributeFilterInput.addEventListener('change', () => {
+                // 검색 결과 필터링 입력란에 자동으로 속성 필터 값 동기화
+                syncAttributeFilterToSearchFilter();
+                // localStorage 자동 저장
+                saveSearchSettingsToStorage();
+            });
+        }
+
+        // 추가 검색 입력 이벤트
+        if ($additionalSearchInput) {
+            let additionalSearchTimer = null;
+            $additionalSearchInput.addEventListener('input', () => {
+                // localStorage 자동 저장
+                saveSearchSettingsToStorage();
+                
+                // 필터 입력이 있으면 재검색
+                if ($attributeFilterInput && $attributeFilterInput.value.trim()) {
+                    if (additionalSearchTimer) clearTimeout(additionalSearchTimer);
+                    additionalSearchTimer = setTimeout(() => {
+                        loadAttributes();
+                    }, 500);
+                }
+            });
+        }
+
+        // 검색 결과 필터링 이벤트
+        if ($searchFilterInput) {
+            let filterTimer = null;
+            $searchFilterInput.addEventListener('input', () => {
+                // 속성 필터 입력란에 자동으로 검색 결과 필터링 값 동기화
+                if ($attributeFilterInput) {
+                    $attributeFilterInput.value = $searchFilterInput.value.trim();
+                    saveSearchSettingsToStorage();
+                }
+                
+                // 디바운싱으로 필터링 재적용
+                if (filterTimer) clearTimeout(filterTimer);
+                filterTimer = setTimeout(() => {
+                    // 속성 목록 재렌더링 (필터링 적용)
+                    if ($attributeFilterInput && $attributeFilterInput.value.trim()) {
+                        loadAttributes();
+                    }
+                }, 300);
+            });
+        }
+        
+        // 초기화: localStorage에서 설정 로드
+        loadSearchSettingsFromStorage();
+        
+        // 초기화 후 속성 필터와 검색 결과 필터링 동기화
+        if ($attributeFilterInput && $searchFilterInput) {
+            // 속성 필터 값이 있으면 검색 결과 필터링에 동기화
+            if ($attributeFilterInput.value.trim()) {
+                $searchFilterInput.value = $attributeFilterInput.value.trim();
+            }
+            // 검색 결과 필터링 값이 있으면 속성 필터에 동기화
+            else if ($searchFilterInput.value.trim()) {
+                $attributeFilterInput.value = $searchFilterInput.value.trim();
+            }
         }
 
         function escapeHtml(text) {
@@ -2834,6 +3730,80 @@ ${savedAttributeInfo}`;
         
         // 전역 함수로 등록
         window.copyDataTextFromHidden = copyDataTextFromHidden;
+        
+        // 데이터 삭제 함수
+        async function deleteAttributeData(attrBitMax, attrBitMin, dataBitMax, dataBitMin, dataText) {
+            // dataText는 HTML 이스케이프된 문자열이므로 디코딩 필요
+            let previewText = '';
+            try {
+                // HTML 엔티티 디코딩
+                const tempDiv = document.createElement('div');
+                tempDiv.innerHTML = dataText.replace(/&quot;/g, '"');
+                previewText = tempDiv.textContent || tempDiv.innerText || dataText;
+                // 미리보기는 50자로 제한
+                previewText = previewText.substring(0, 50) + (previewText.length > 50 ? '...' : '');
+            } catch (e) {
+                previewText = (dataText || '').substring(0, 50);
+            }
+            
+            // 확인은 모달로 대체할 수도 있지만, 간단하게 로그로 표시
+            console.log('데이터 삭제 시작:', { attrBitMax, attrBitMin, dataBitMax, dataBitMin, previewText });
+            
+            try {
+                // POST 메서드로 삭제 요청 (서버가 DELETE를 지원하지 않을 수 있음)
+                const url = getServerUrl('/api/attributes/data/delete');
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        attributeBitMax: parseFloat(attrBitMax),
+                        attributeBitMin: parseFloat(attrBitMin),
+                        dataBitMax: parseFloat(dataBitMax),
+                        dataBitMin: parseFloat(dataBitMin)
+                    })
+                });
+                
+                if (!response.ok) {
+                    let errorText = '';
+                    try {
+                        errorText = await response.text();
+                    } catch (e) {
+                        errorText = `HTTP ${response.status}`;
+                    }
+                    throw new Error(`HTTP ${response.status}: ${errorText}`);
+                }
+                
+                let result = null;
+                try {
+                    result = await response.json();
+                } catch (e) {
+                    console.warn('응답 JSON 파싱 실패, 빈 응답으로 처리');
+                    result = { ok: true };
+                }
+                
+                if (result && result.ok) {
+                    console.log('데이터 삭제 완료:', result);
+                    // 로그에 성공 메시지 추가
+                    addLog('info', `데이터 삭제 완료: ${previewText}`);
+                    // 속성 목록 새로고침
+                    loadAttributes();
+                } else {
+                    const errorMsg = result?.message || result?.error || '삭제 실패';
+                    console.error('데이터 삭제 실패:', errorMsg, result);
+                    addLog('error', `데이터 삭제 실패: ${errorMsg}`);
+                    throw new Error(errorMsg);
+                }
+            } catch (error) {
+                const errorMsg = error.message || String(error) || '알 수 없는 오류';
+                console.error('데이터 삭제 오류:', error, errorMsg);
+                addLog('error', `데이터 삭제 오류: ${errorMsg}`);
+            }
+        }
+        
+        // 전역 함수로 등록
+        window.deleteAttributeData = deleteAttributeData;
 
         // 데이터 추가 모달 열기
         window.openAddDataModal = function(attributeText, attributeBitMax, attributeBitMin) {
@@ -2844,8 +3814,8 @@ ${savedAttributeInfo}`;
             };
             
             $modalAttributeName.textContent = attributeText;
-            $modalAttributeMax.textContent = attributeBitMax.toFixed(10);
-            $modalAttributeMin.textContent = attributeBitMin.toFixed(10);
+            $modalAttributeMax.textContent = attributeBitMax.toFixed(15);
+            $modalAttributeMin.textContent = attributeBitMin.toFixed(15);
             $newDataInput.value = '';
             $newDataMax.textContent = '-';
             $newDataMin.textContent = '-';

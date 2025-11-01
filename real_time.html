@@ -7,6 +7,7 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://xn--9l4b4xi9r.com/_8%EB%B9%84%ED%8A%B8/js/bitCalculation.js" defer></script>
+    <script src="js/searchAlgorithm.js"></script>
     <style>
         .input-section {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -337,54 +338,126 @@
 
         try {
           // 자동 저장은 비활성화 (명시적 저장만)
-          addOutput(`입력 텍스트: "${text.substring(0, 30)}${text.length > 30 ? '...' : ''}" (BIT: ${bitMax.toFixed(6)}, ${bitMin.toFixed(6)})`, 'info');
+          addOutput(`입력 텍스트: "${text.substring(0, 30)}${text.length > 30 ? '...' : ''}" (BIT: ${bitMax.toFixed(15)}, ${bitMin.toFixed(15)})`, 'info');
         } catch (e) {
           addOutput(`저장 오류: ${e.message}`, 'error');
         }
       }
 
-      async function autoSearch(bitMax, bitMin) {
+      // 유사도 계산 헬퍼 함수 (공통 모듈 사용)
+      function calculateSimilarity(queryBitMax, queryBitMin, resultBitMax, resultBitMin) {
+        return window.SearchAlgorithm.calculateSimilarity(queryBitMax, queryBitMin, resultBitMax, resultBitMin);
+      }
+
+      async function autoSearch(bitMax, bitMin, searchText = null) {
         if (!bitMax || !bitMin) return;
 
         try {
           $searchStatus.textContent = '검색 중...';
           $searchStatus.style.color = '#007bff';
 
+          // 검색 옵션 (real_time.html은 기본값으로 'attribute'만 사용)
+          let searchOption = 'attribute';
+
           let results = [];
-          const attributeText = $attributeInput.value.trim();
+          // 검색 텍스트가 제공되면 해당 텍스트를 속성 후보로도 고려
+          let attributeText = $attributeInput.value.trim();
+          // 실시간 조회 입력란에서 검색한 경우, 검색 텍스트를 속성 후보로 사용
+          if (!attributeText && searchText) {
+            attributeText = searchText.trim();
+          }
           const dataText = $input.value.trim();
 
-          // 1. 속성이 있으면 해당 속성의 데이터 조회
-          if (attributeText) {
+          // 1. 속성 검색 (속성 검색 또는 전체 검색일 때)
+          if (searchOption === 'attribute' || searchOption === 'all') {
             try {
-              const attrBits = calculateBitValues(attributeText);
-              if (attrBits.max && attrBits.min) {
-                const url = getServerUrl(`/api/attributes/data?bitMax=${attrBits.max}&bitMin=${attrBits.min}&limit=20&similarity=true&threshold=0.1`);
-                const res = await fetch(url);
+              
+              // 검색 텍스트가 있으면 그것을 우선 사용 (실시간 조회 입력란에서 검색한 경우)
+              const searchAttributeText = searchText ? searchText.trim() : attributeText;
+              
+              if (searchAttributeText) {
+                const attrBits = calculateBitValues(searchAttributeText);
+                if (attrBits.max && attrBits.min) {
+                  // 속성 유사도 검색 (threshold로 유사한 속성들을 찾음)
+                  const url = getServerUrl(`/api/attributes/data?bitMax=${attrBits.max}&bitMin=${attrBits.min}&limit=20&similarity=true&threshold=0.1`);
+                  const res = await fetch(url);
 
-                if (res.ok) {
-                  const data = await res.json();
-                  if (data.ok && data.items) {
-                    results.push(...data.items.map(item => {
-                      // 데이터 BIT 값으로 유사도 계산
-                      const dataBitMaxDiff = Math.abs((bitMax || 0) - (item.data?.bitMax || item.max || 0));
-                      const dataBitMinDiff = Math.abs((bitMin || 0) - (item.data?.bitMin || item.min || 0));
-                      const dataDistance = Math.sqrt(dataBitMaxDiff * dataBitMaxDiff + dataBitMinDiff * dataBitMinDiff);
-                      const dataSimilarity = Math.max(0, 1 / (1 + dataDistance));
-                      
-                      // 속성 유사도와 데이터 유사도의 평균
-                      const avgSimilarity = item.similarity ? (item.similarity + dataSimilarity) / 2 : dataSimilarity;
-                      
-                      return {
-                        ...item,
-                        source: 'attribute_data',
-                        input: item.attribute?.text || attributeText,
-                        response: item.data?.text || item.s || '',
-                        similarity: avgSimilarity
-                      };
-                    }));
-                    console.log('[Search] 속성 데이터 조회:', data.items.length, '개');
+                  if (res.ok) {
+                    const data = await res.json();
+                    if (data.ok && data.items) {
+                      results.push(...data.items.map(item => {
+                        // 속성 검색인 경우: 검색 쿼리의 속성 BIT와 결과의 속성 BIT를 비교
+                        const resultAttrBitMax = item.attribute?.bitMax || null;
+                        const resultAttrBitMin = item.attribute?.bitMin || null;
+                        const resultAttrText = item.attribute?.text || '';
+                        
+                        // 속성 BIT로 유사도 계산 (공통 모듈 사용)
+                        const similarity = window.SearchAlgorithm.calculateAttributeSimilarity(
+                          searchAttributeText,
+                          attrBits.max,
+                          attrBits.min,
+                          item
+                        );
+                        
+                        return {
+                          ...item,
+                          source: 'attribute_data',
+                          input: item.attribute?.text || searchAttributeText,
+                          response: item.data?.text || item.s || '',
+                          similarity: similarity
+                        };
+                      }));
+                    }
                   }
+                }
+              }
+              
+              // 속성으로만 검색하는 경우, 검색 텍스트 BIT로 모든 속성과 유사도 비교
+              if (searchOption === 'attribute' && searchText && bitMax && bitMin) {
+                try {
+                  // 모든 속성 목록 가져오기
+                  const allAttrUrl = getServerUrl('/api/attributes/all');
+                  const allAttrRes = await fetch(allAttrUrl);
+                  
+                  if (allAttrRes.ok) {
+                    const allAttrData = await allAttrRes.json();
+                    if (allAttrData.ok && allAttrData.attributes && allAttrData.attributes.length > 0) {
+                      // 검색 텍스트 BIT와 각 속성 BIT 간의 유사도 계산 (공통 모듈 사용)
+                      const similarAttributes = window.SearchAlgorithm.findSimilarAttributes(
+                        searchText, 
+                        bitMax, 
+                        bitMin, 
+                        allAttrData.attributes, 
+                        0.1, 
+                        10
+                      );
+                      
+                      // 유사한 속성들의 데이터 조회
+                      for (const similarAttr of similarAttributes) {
+                        try {
+                          const dataUrl = getServerUrl(`/api/attributes/data?bitMax=${similarAttr.bitMax}&bitMin=${similarAttr.bitMin}&limit=5`);
+                          const dataRes = await fetch(dataUrl);
+                          
+                          if (dataRes.ok) {
+                            const dataData = await dataRes.json();
+                            if (dataData.ok && dataData.items) {
+                              results.push(...dataData.items.map(item => ({
+                                ...item,
+                                source: 'attribute_similar',
+                                input: item.attribute?.text || similarAttr.text,
+                                response: item.data?.text || item.s || '',
+                                similarity: similarAttr.similarity * 0.9 // 속성 유사도에 약간의 페널티 적용
+                              })));
+                            }
+                          }
+                        } catch (e) {
+                          console.warn(`속성 "${similarAttr.text}" 데이터 조회 오류:`, e);
+                        }
+                      }
+                    }
+                  }
+                } catch (e) {
+                  console.warn('속성 유사도 검색 오류:', e);
                 }
               }
             } catch (e) {
@@ -392,88 +465,165 @@
             }
           }
 
-          // 2. 데이터 BIT 값으로도 검색 (데이터가 다른 속성에 저장되어 있을 수 있음)
-          try {
-            // 데이터 BIT 값으로 MAX/MIN 폴더에서 검색
-            const maxUrl = getServerUrl(`/api/log/by-max?nb_max=${bitMax}&n=10`);
-            const minUrl = getServerUrl(`/api/log/by-min?nb_min=${bitMin}&n=10`);
-            
-            const [maxRes, minRes] = await Promise.all([fetch(maxUrl), fetch(minUrl)]);
-            
-            if (maxRes.ok) {
-              const maxData = await maxRes.json();
-              if (maxData.ok && maxData.items) {
-                // 속성 데이터만 필터링
-                const attrItems = maxData.items.filter(item => item.attribute).map(item => ({
-                  ...item,
-                  source: 'attribute_data_by_data',
-                  input: item.attribute?.text || '',
-                  response: item.data?.text || item.s || '',
-                  similarity: 1.0 // 정확 일치
-                }));
-                results.push(...attrItems);
+          // 2. 데이터 BIT 값으로도 검색 (속성-데이터 연결된 항목) - 전체 검색 또는 데이터 검색일 때
+          if (searchOption === 'all' || searchOption === 'data') {
+            try {
+              const maxUrl = getServerUrl(`/api/log/by-max?nb_max=${bitMax}&n=20`);
+              const minUrl = getServerUrl(`/api/log/by-min?nb_min=${bitMin}&n=20`);
+              
+              const [maxRes, minRes] = await Promise.all([fetch(maxUrl), fetch(minUrl)]);
+              
+              if (maxRes.ok) {
+                const maxData = await maxRes.json();
+                if (maxData.ok && maxData.items) {
+                  const attrItems = maxData.items.filter(item => item.attribute).map(item => {
+                    // 검색 쿼리 BIT와 결과 BIT 간의 유사도 계산
+                    const resultBitMax = item.data?.bitMax || item.max || item.nb_max || null;
+                    const resultBitMin = item.data?.bitMin || item.min || item.nb_min || null;
+                    const similarity = calculateSimilarity(bitMax, bitMin, resultBitMax, resultBitMin);
+                    
+                    return {
+                      ...item,
+                      source: 'attribute_data_by_data',
+                      input: item.attribute?.text || '',
+                      response: item.data?.text || item.s || '',
+                      similarity: similarity
+                    };
+                  });
+                  results.push(...attrItems);
+                }
               }
-            }
-            
-            if (minRes.ok) {
-              const minData = await minRes.json();
-              if (minData.ok && minData.items) {
-                // 속성 데이터만 필터링
-                const attrItems = minData.items.filter(item => item.attribute).map(item => ({
-                  ...item,
-                  source: 'attribute_data_by_data',
-                  input: item.attribute?.text || '',
-                  response: item.data?.text || item.s || '',
-                  similarity: 1.0 // 정확 일치
-                }));
-                results.push(...attrItems);
+              
+              if (minRes.ok) {
+                const minData = await minRes.json();
+                if (minData.ok && minData.items) {
+                  const attrItems = minData.items.filter(item => item.attribute).map(item => {
+                    // 검색 쿼리 BIT와 결과 BIT 간의 유사도 계산
+                    const resultBitMax = item.data?.bitMax || item.max || item.nb_max || null;
+                    const resultBitMin = item.data?.bitMin || item.min || item.nb_min || null;
+                    const similarity = calculateSimilarity(bitMax, bitMin, resultBitMax, resultBitMin);
+                    
+                    return {
+                      ...item,
+                      source: 'attribute_data_by_data',
+                      input: item.attribute?.text || '',
+                      response: item.data?.text || item.s || '',
+                      similarity: similarity
+                    };
+                  });
+                  results.push(...attrItems);
+                }
               }
+            } catch (e) {
+              console.warn('데이터 BIT 검색 오류:', e);
             }
-          } catch (e) {
-            console.warn('데이터 BIT 검색 오류:', e);
           }
 
-          // 3. 유사도 검색 (training 데이터)
-          try {
-            const url = getServerUrl('/api/training/similar');
-            const res = await fetch(url, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                query: '',
-                queryBitMax: bitMax,
-                queryBitMin: bitMin,
-                limit: 10
-              })
+          // 3. 일반 로그 데이터 검색 (속성이 없는 일반 데이터) - 전체 검색일 때만
+          if (searchOption === 'all') {
+            try {
+              const maxUrl = getServerUrl(`/api/log/by-max?nb_max=${bitMax}&n=10`);
+              const minUrl = getServerUrl(`/api/log/by-min?nb_min=${bitMin}&n=10`);
+              
+              const [maxRes, minRes] = await Promise.all([fetch(maxUrl), fetch(minUrl)]);
+              
+              const generalItems = [];
+              
+              if (maxRes.ok) {
+                const maxData = await maxRes.json();
+                if (maxData.ok && maxData.items) {
+                  maxData.items.filter(item => !item.attribute).forEach(item => {
+                    const resultBitMax = item.nb_max || item.max || null;
+                    const resultBitMin = item.nb_min || item.min || null;
+                    const similarity = calculateSimilarity(bitMax, bitMin, resultBitMax, resultBitMin);
+                    
+                    generalItems.push({
+                      ...item,
+                      source: 'log',
+                      input: item.input_text || item.s || '',
+                      response: item.output || item.s || '',
+                      similarity: similarity
+                    });
+                  });
+                }
+              }
+              
+              if (minRes.ok) {
+                const minData = await minRes.json();
+                if (minData.ok && minData.items) {
+                  minData.items.filter(item => !item.attribute).forEach(item => {
+                    const resultBitMax = item.nb_max || item.max || null;
+                    const resultBitMin = item.nb_min || item.min || null;
+                    const similarity = calculateSimilarity(bitMax, bitMin, resultBitMax, resultBitMin);
+                    
+                    generalItems.push({
+                      ...item,
+                      source: 'log',
+                      input: item.input_text || item.s || '',
+                      response: item.output || item.s || '',
+                      similarity: similarity
+                    });
+                  });
+                }
+              }
+              
+              results.push(...generalItems);
+            } catch (e) {
+              console.warn('일반 로그 검색 오류:', e);
+            }
+          }
+
+          // 4. 유사도 검색 (training 데이터) - 전체 검색일 때만
+          if (searchOption === 'all') {
+            try {
+              const url = getServerUrl('/api/training/similar');
+              const res = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  query: '',
+                  queryBitMax: bitMax,
+                  queryBitMin: bitMin,
+                  limit: 10
+                })
+              });
+
+              if (res.ok) {
+                const data = await res.json();
+                if (data.ok && data.items) {
+                  results.push(...data.items.map(item => ({
+                    ...item,
+                    source: 'training',
+                    similarity: item.similarity_score || calculateSimilarity(bitMax, bitMin, item.bit?.max, item.bit?.min)
+                  })));
+                }
+              }
+            } catch (e) {
+              console.warn('유사도 검색 오류:', e);
+            }
+          }
+
+          // 중복 제거 및 정렬 (공통 모듈 사용)
+          let finalResults = window.SearchAlgorithm.processSearchResults(results, bitMax, bitMin, 20);
+          
+          // 검색 텍스트가 있을 때 텍스트 정확 매칭 우선 정렬
+          if (searchText && searchText.trim()) {
+            const searchTextTrimmed = searchText.trim();
+            finalResults = finalResults.sort((a, b) => {
+              const aAttrText = (a.attribute?.text || a.input || '').trim();
+              const bAttrText = (b.attribute?.text || b.input || '').trim();
+              
+              // 텍스트가 정확히 일치하는 경우 우선
+              const aExactMatch = aAttrText === searchTextTrimmed;
+              const bExactMatch = bAttrText === searchTextTrimmed;
+              
+              if (aExactMatch && !bExactMatch) return -1;
+              if (!aExactMatch && bExactMatch) return 1;
+              
+              // 둘 다 정확히 일치하거나 둘 다 아닌 경우 유사도순 정렬
+              return (b.similarity || 0) - (a.similarity || 0);
             });
-
-            if (res.ok) {
-              const data = await res.json();
-              if (data.ok && data.items) {
-                results.push(...data.items.map(item => ({
-                  ...item,
-                  source: 'training',
-                  similarity: item.similarity_score || 0
-                })));
-              }
-            }
-          } catch (e) {
-            console.warn('유사도 검색 오류:', e);
           }
-
-          // 중복 제거 및 정렬
-          const seen = new Set();
-          const uniqueResults = [];
-          results.forEach(item => {
-            const key = `${item.t || ''}_${item.input || item.attribute?.text || ''}_${item.response || item.data?.text || item.s || ''}`;
-            if (!seen.has(key)) {
-              seen.add(key);
-              uniqueResults.push(item);
-            }
-          });
-
-          uniqueResults.sort((a, b) => (b.similarity || 0) - (a.similarity || 0));
-          const finalResults = uniqueResults.slice(0, 20);
 
           renderResults(finalResults);
           $resultCount.textContent = `${finalResults.length}개`;
@@ -509,7 +659,7 @@
           
           const input = item.input || item.attribute?.text || item.input_text || '';
           const response = item.response || item.data?.text || item.s || item.output || '';
-          const similarity = item.similarity != null ? (item.similarity * 100).toFixed(1) + '%' : '100%';
+          const similarity = item.similarity != null ? (item.similarity * 100).toFixed(10) + '%' : '100%';
           
           const similarityClass = item.similarity >= 0.9 ? 'bg-success' : item.similarity >= 0.7 ? 'bg-warning' : 'bg-danger';
           
@@ -529,8 +679,8 @@
 
       function updateBitDisplay(text, $maxEl, $minEl) {
         const { max, min } = calculateBitValues(text);
-        if ($maxEl) $maxEl.textContent = max !== null ? max.toFixed(10) : '-';
-        if ($minEl) $minEl.textContent = min !== null ? min.toFixed(10) : '-';
+        if ($maxEl) $maxEl.textContent = max !== null ? max.toFixed(15) : '-';
+        if ($minEl) $minEl.textContent = min !== null ? min.toFixed(15) : '-';
         return { max, min };
       }
 

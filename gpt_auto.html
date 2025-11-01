@@ -7,6 +7,7 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://xn--9l4b4xi9r.com/_8%EB%B9%84%ED%8A%B8/js/bitCalculation.js" defer></script>
+    <script src="js/searchAlgorithm.js"></script>
     <style>
         .gpt-section {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -690,17 +691,9 @@ ${customPrompt ? `\n[추가 지시사항]\n${customPrompt}\n` : ''}
         }
       }
 
-      // 유사도 계산 헬퍼 함수
+      // 유사도 계산 헬퍼 함수 (공통 모듈 사용)
       function calculateSimilarity(queryBitMax, queryBitMin, resultBitMax, resultBitMin) {
-        if (resultBitMax === null || resultBitMax === undefined || 
-            resultBitMin === null || resultBitMin === undefined) {
-          return 0;
-        }
-        const bitMaxDiff = Math.abs((queryBitMax || 0) - (resultBitMax || 0));
-        const bitMinDiff = Math.abs((queryBitMin || 0) - (resultBitMin || 0));
-        const distance = Math.sqrt(bitMaxDiff * bitMaxDiff + bitMinDiff * bitMinDiff);
-        // 거리가 0이면 1.0, 거리가 멀수록 0에 가까워짐
-        return Math.max(0, 1 / (1 + distance));
+        return window.SearchAlgorithm.calculateSimilarity(queryBitMax, queryBitMin, resultBitMax, resultBitMin);
       }
 
       async function autoSearch(bitMax, bitMin, searchText = null) {
@@ -733,8 +726,11 @@ ${customPrompt ? `\n[추가 지시사항]\n${customPrompt}\n` : ''}
           if (searchOption === 'attribute' || searchOption === 'all') {
             try {
               
-              if (attributeText) {
-                const attrBits = calculateBitValues(attributeText);
+              // 검색 텍스트가 있으면 그것을 우선 사용 (실시간 조회 입력란에서 검색한 경우)
+              const searchAttributeText = searchText ? searchText.trim() : attributeText;
+              
+              if (searchAttributeText) {
+                const attrBits = calculateBitValues(searchAttributeText);
                 if (attrBits.max && attrBits.min) {
                   // 속성 유사도 검색 (threshold로 유사한 속성들을 찾음)
                   const url = getServerUrl(`/api/attributes/data?bitMax=${attrBits.max}&bitMin=${attrBits.min}&limit=20&similarity=true&threshold=0.1`);
@@ -747,21 +743,20 @@ ${customPrompt ? `\n[추가 지시사항]\n${customPrompt}\n` : ''}
                         // 속성 검색인 경우: 검색 쿼리의 속성 BIT와 결과의 속성 BIT를 비교
                         const resultAttrBitMax = item.attribute?.bitMax || null;
                         const resultAttrBitMin = item.attribute?.bitMin || null;
+                        const resultAttrText = item.attribute?.text || '';
                         
-                        // 속성 BIT로 유사도 계산 (속성 검색이므로 속성 BIT를 우선 비교)
-                        let similarity = 0;
-                        if (resultAttrBitMax !== null && resultAttrBitMin !== null) {
-                          // 속성 BIT 값으로 유사도 계산
-                          similarity = calculateSimilarity(attrBits.max, attrBits.min, resultAttrBitMax, resultAttrBitMin);
-                        } else if (item.similarity) {
-                          // 서버에서 반환된 유사도 사용
-                          similarity = item.similarity;
-                        }
+                        // 속성 BIT로 유사도 계산 (공통 모듈 사용)
+                        const similarity = window.SearchAlgorithm.calculateAttributeSimilarity(
+                          searchAttributeText,
+                          attrBits.max,
+                          attrBits.min,
+                          item
+                        );
                         
                         return {
                           ...item,
                           source: 'attribute_data',
-                          input: item.attribute?.text || attributeText,
+                          input: item.attribute?.text || searchAttributeText,
                           response: item.data?.text || item.s || '',
                           similarity: similarity
                         };
@@ -781,15 +776,15 @@ ${customPrompt ? `\n[추가 지시사항]\n${customPrompt}\n` : ''}
                   if (allAttrRes.ok) {
                     const allAttrData = await allAttrRes.json();
                     if (allAttrData.ok && allAttrData.attributes && allAttrData.attributes.length > 0) {
-                      // 검색 텍스트 BIT와 각 속성 BIT 간의 유사도 계산
-                      const similarAttributes = allAttrData.attributes
-                        .map(attr => {
-                          const similarity = calculateSimilarity(bitMax, bitMin, attr.bitMax, attr.bitMin);
-                          return { ...attr, similarity };
-                        })
-                        .filter(attr => attr.similarity > 0.1) // 유사도 임계값 0.1
-                        .sort((a, b) => b.similarity - a.similarity)
-                        .slice(0, 10); // 상위 10개 속성만
+                      // 검색 텍스트 BIT와 각 속성 BIT 간의 유사도 계산 (공통 모듈 사용)
+                      const similarAttributes = window.SearchAlgorithm.findSimilarAttributes(
+                        searchText, 
+                        bitMax, 
+                        bitMin, 
+                        allAttrData.attributes, 
+                        0.1, 
+                        10
+                      );
                       
                       // 유사한 속성들의 데이터 조회
                       for (const similarAttr of similarAttributes) {
@@ -962,29 +957,27 @@ ${customPrompt ? `\n[추가 지시사항]\n${customPrompt}\n` : ''}
             }
           }
 
-          // 중복 제거 및 정렬
-          const seen = new Set();
-          const uniqueResults = [];
-          results.forEach(item => {
-            const key = `${item.t || ''}_${item.input || item.attribute?.text || ''}_${item.response || item.data?.text || item.s || ''}`;
-            if (!seen.has(key)) {
-              seen.add(key);
-              uniqueResults.push(item);
-            }
-          });
-
-          // 유사도가 계산되지 않은 항목에 대해 계산 시도
-          uniqueResults.forEach(item => {
-            if (item.similarity === undefined || item.similarity === null) {
-              const resultBitMax = item.data?.bitMax || item.max || item.nb_max || item.bit?.max || null;
-              const resultBitMin = item.data?.bitMin || item.min || item.nb_min || item.bit?.min || null;
-              item.similarity = calculateSimilarity(bitMax, bitMin, resultBitMax, resultBitMin);
-            }
-          });
+          // 중복 제거 및 정렬 (공통 모듈 사용)
+          let finalResults = window.SearchAlgorithm.processSearchResults(results, bitMax, bitMin, 20);
           
-          // 유사도순으로 정렬 (높은 순)
-          uniqueResults.sort((a, b) => (b.similarity || 0) - (a.similarity || 0));
-          const finalResults = uniqueResults.slice(0, 20);
+          // 검색 텍스트가 있을 때 텍스트 정확 매칭 우선 정렬
+          if (searchText && searchText.trim()) {
+            const searchTextTrimmed = searchText.trim();
+            finalResults = finalResults.sort((a, b) => {
+              const aAttrText = (a.attribute?.text || a.input || '').trim();
+              const bAttrText = (b.attribute?.text || b.input || '').trim();
+              
+              // 텍스트가 정확히 일치하는 경우 우선
+              const aExactMatch = aAttrText === searchTextTrimmed;
+              const bExactMatch = bAttrText === searchTextTrimmed;
+              
+              if (aExactMatch && !bExactMatch) return -1;
+              if (!aExactMatch && bExactMatch) return 1;
+              
+              // 둘 다 정확히 일치하거나 둘 다 아닌 경우 유사도순 정렬
+              return (b.similarity || 0) - (a.similarity || 0);
+            });
+          }
 
           renderResults(finalResults);
           $resultCount.textContent = `${finalResults.length}개`;
