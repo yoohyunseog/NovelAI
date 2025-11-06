@@ -167,11 +167,104 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
     
+    // 챕터 구성을 서버에 저장하는 함수
+    async function saveChapterStructure(novelTitle, chapters) {
+        if (!novelTitle || !chapters || chapters.length === 0) {
+            console.warn('[챕터 구성 저장] 저장할 데이터가 없습니다:', { novelTitle, chapters });
+            return;
+        }
+        
+        // 챕터 구성 정보를 JSON 형식으로 변환
+        const chapterStructure = {
+            chapters: chapters.map(ch => ({
+                number: ch.number,
+                title: ch.title,
+                scenes: ch.scenes || []
+            }))
+        };
+        const dataText = JSON.stringify(chapterStructure, null, 2);
+        
+        // 속성 텍스트: "소설 제목 → 챕터 구성"
+        const attributeText = `${novelTitle} → 챕터 구성`;
+        const fullAttributeText = attributeText; // 이미 전체 경로
+        
+        // BIT 값 계산
+        const attributeBits = calculateBitValues(fullAttributeText);
+        const dataBits = calculateBitValues(dataText);
+        
+        if (!attributeBits.max || !attributeBits.min || !dataBits.max || !dataBits.min) {
+            console.warn('[챕터 구성 저장] BIT 값 계산 실패');
+            return;
+        }
+        
+        // 중복 체크 (같은 소설의 챕터 구성이 이미 저장되어 있는지 확인)
+        const isDuplicate = await checkDuplicate(fullAttributeText, dataText, attributeBits, dataBits);
+        if (isDuplicate) {
+            console.log('[챕터 구성 저장] 이미 저장된 챕터 구성입니다:', { novelTitle });
+            return;
+        }
+        
+        try {
+            const url = getServerUrl('/api/attributes/data');
+            console.log('[챕터 구성 저장] 저장 시작:', { novelTitle, chapters: chapters.length });
+            
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    attributeText: fullAttributeText,
+                    attributeBitMax: attributeBits.max,
+                    attributeBitMin: attributeBits.min,
+                    text: dataText,
+                    dataBitMax: dataBits.max,
+                    dataBitMin: dataBits.min,
+                    novelTitle: novelTitle,
+                    chapter: null, // 챕터 구성은 챕터 정보 없음
+                    chapterBitMax: null,
+                    chapterBitMin: null
+                }),
+            });
+            
+            if (!response.ok) {
+                const errorText = await response.text().catch(() => 'Unknown error');
+                console.error('[챕터 구성 저장] 저장 실패:', errorText);
+                return;
+            }
+            
+            const result = await response.json().catch(() => ({}));
+            if (result.ok) {
+                console.log('[챕터 구성 저장] 저장 완료:', { novelTitle, chapters: chapters.length });
+                if (typeof window.addRightLog === 'function') {
+                    window.addRightLog('info', `[챕터 구성 저장] "${novelTitle} → 챕터 구성" 저장 완료`);
+                }
+            } else {
+                console.warn('[챕터 구성 저장] 저장 실패:', result);
+            }
+        } catch (error) {
+            console.error('[챕터 구성 저장] 오류:', error);
+        }
+    }
+    
     // 자동 저장 함수
     async function autoSave() {
+        // 중요: 저장 시에는 항상 현재 입력 필드의 실제 값을 사용해야 함
+        // 로컬 스토리지에서 값을 읽어오지 않고, DOM 요소의 .value를 직접 사용
         const novelTitle = ($novelTitleInput && $novelTitleInput.value || '').trim();
         const attributeText = ($attributeInput && $attributeInput.value || '').trim();
         const dataText = ($dataInput && $dataInput.value || '').trim();
+        
+        // 디버깅: 저장 시점의 실제 입력 필드 값 확인 (로컬 스토리지와 비교)
+        console.log('[자동 저장] 저장 시점 입력 필드 값:', {
+            novelTitle: novelTitle,
+            attributeText: attributeText,
+            dataText: dataText ? dataText.substring(0, 50) + '...' : dataText,
+            localStorage_속성: localStorage.getItem(STORAGE_KEY_ATTRIBUTE_TEXT),
+            localStorage_소설제목: localStorage.getItem(STORAGE_KEY_NOVEL_TITLE),
+            일치여부_속성: attributeText === localStorage.getItem(STORAGE_KEY_ATTRIBUTE_TEXT),
+            일치여부_소설제목: novelTitle === localStorage.getItem(STORAGE_KEY_NOVEL_TITLE)
+        });
         
         if (typeof window.addRightLog === 'function') {
             window.addRightLog('info', `[우측 저장] 자동 저장 시작: "${novelTitle}" → "${attributeText.substring(0, 50)}${attributeText.length > 50 ? '...' : ''}"`);
@@ -202,6 +295,14 @@ document.addEventListener('DOMContentLoaded', () => {
         
         // 실제 저장할 속성 텍스트: 소설 제목 + 속성 텍스트
         const fullAttributeText = `${novelTitle} → ${finalAttributeText}`;
+        
+        // 디버깅: 저장 전 속성 텍스트 확인
+        console.log('[자동 저장] 저장할 속성 텍스트:', {
+            novelTitle,
+            attributeText,
+            finalAttributeText,
+            fullAttributeText
+        });
         
         // "→"로 연결된 속성(예: "소설 제목 → 챕터 1: 제1장")은 1개 속성으로 봄
         
@@ -239,46 +340,107 @@ document.addEventListener('DOMContentLoaded', () => {
             updateSaveStatus('ℹ️ 이미 저장된 데이터입니다 (중복 방지)', 'info');
             lastSavedAttribute = fullAttributeText;
             lastSavedData = dataText;
-            // 조회 목록 새로고침
-            if ($attributeFilterInput && $attributeFilterInput.value.trim()) {
-                loadAttributes();
-            }
+            // 조회 목록 새로고침 (저장된 속성 텍스트 기반으로 필터 업데이트)
+            setTimeout(() => {
+                if ($attributeFilterInput) {
+                    // 저장된 속성 텍스트에서 챕터까지 포함한 부분 추출
+                    const parts = fullAttributeText.split(' → ');
+                    let filterText = '';
+                    
+                    if (parts.length >= 2) {
+                        // "소설 제목 → 챕터 N: 제목"까지 포함
+                        filterText = parts.slice(0, 2).join(' → ');
+                    } else if (parts.length === 1) {
+                        // 소설 제목만 있는 경우
+                        filterText = parts[0];
+                    } else {
+                        // 소설 제목으로 기본 설정
+                        filterText = novelTitle || '';
+                    }
+                    
+                    // 필터 입력 필드 업데이트 (저장된 속성과 일치하도록)
+                    if (filterText) {
+                        $attributeFilterInput.value = filterText;
+                        // 필터 저장
+                        saveFilterValues();
+                        loadAttributes();
+                    } else if ($attributeFilterInput.value.trim()) {
+                        // 필터가 이미 있으면 그대로 사용
+                        loadAttributes();
+                    }
+                }
+            }, 500);
             return;
         }
         
-        // 챕터 정보 추출 (전체 속성 텍스트에서 찾기)
-        // 전체 속성 텍스트에서 "챕터 N: 제목" 형식 찾기
+        // 챕터 정보 추출 (속성 구조에서 정확히 찾기)
+        // fullAttributeText 형식: "소설 제목 → 챕터 N: 제목 → 속성명"
+        // 두 번째 부분(인덱스 1)에서만 챕터 정보를 찾아야 정확함
         let chapter = null;
-        const chapterMatch = fullAttributeText.match(/챕터\s*(\d+)(?:\s*[:：]\s*([^→]+?))(?:\s*→|$)/i);
-        if (chapterMatch) {
-            const chapterTitle = (chapterMatch[2] || '').trim();
-            chapter = {
-                number: chapterMatch[1],
-                title: chapterTitle || `제${chapterMatch[1]}장`
-            };
-            console.log('[자동 저장] 챕터 정보 추출 (전체 텍스트):', { 
-                fullAttributeText, 
-                chapterNumber: chapter.number, 
-                chapterTitle: chapter.title 
-            });
-        } else {
-            // 전체 속성 텍스트에서 찾지 못하면 속성 텍스트 부분에서 찾기
-            const parts = finalAttributeText.split(' → ').map(p => (p || '').trim()).filter(p => p && p.length > 0);
-            for (const part of parts) {
-                const partMatch = part.match(/챕터\s*(\d+)(?:\s*[:：]\s*(.+))?/i);
-                if (partMatch) {
-                    chapter = {
-                        number: partMatch[1],
-                        title: (partMatch[2] || '').trim() || `제${partMatch[1]}장`
-                    };
-                    console.log('[자동 저장] 챕터 정보 추출 (부분 텍스트):', { 
-                        finalAttributeText, 
-                        part, 
-                        chapterNumber: chapter.number, 
-                        chapterTitle: chapter.title 
-                    });
-                    break;
-                }
+        const parts = fullAttributeText.split(' → ').map(p => (p || '').trim()).filter(p => p && p.length > 0);
+        
+        // 두 번째 부분(소설 제목 다음)에서 챕터 정보 찾기
+        if (parts.length >= 2) {
+            const chapterPart = parts[1]; // "챕터 1: 제1장" 또는 "챕터 1"
+            const chapterMatch = chapterPart.match(/챕터\s*(\d+)(?:\s*[:：]\s*(.+))?/i);
+            if (chapterMatch) {
+                // 정규식 매칭 결과 확인: chapterMatch[0] = 전체 매칭, chapterMatch[1] = 챕터 번호, chapterMatch[2] = 제목
+                const chapterNumber = chapterMatch[1]; // 문자열 "1"
+                const chapterTitle = (chapterMatch[2] || '').trim();
+                
+                // 디버깅: 정규식 매칭 결과 확인
+                console.log('[자동 저장] 정규식 매칭 결과:', {
+                    전체매칭: chapterMatch[0],
+                    챕터번호_매칭: chapterMatch[1],
+                    제목_매칭: chapterMatch[2],
+                    chapterPart: chapterPart
+                });
+                
+                chapter = {
+                    number: chapterNumber, // 문자열 그대로 사용 (서버에서 문자열로 저장)
+                    title: chapterTitle || `제${chapterNumber}장`
+                };
+                console.log('[자동 저장] 챕터 정보 추출 (속성 구조에서):', { 
+                    fullAttributeText,
+                    chapterPart,
+                    chapterNumber: chapter.number, 
+                    chapterTitle: chapter.title,
+                    타입_확인: typeof chapter.number
+                });
+            }
+        }
+        
+        // 위에서 찾지 못했으면 fallback: 속성 텍스트 부분에서만 찾기 (데이터 텍스트는 제외)
+        // 주의: fallback은 부정확할 수 있으므로 경고와 함께 사용
+        if (!chapter) {
+            // finalAttributeText에서만 찾기 (fullAttributeText가 아닌, 소설 제목 제외한 부분)
+            // 이렇게 하면 데이터 텍스트에 포함된 챕터 정보를 잘못 추출하지 않음
+            const fallbackMatch = finalAttributeText.match(/챕터\s*(\d+)(?:\s*[:：]\s*([^→]+?))(?:\s*→|$)/i);
+            if (fallbackMatch) {
+                // 정규식 매칭 결과 확인: fallbackMatch[0] = 전체 매칭, fallbackMatch[1] = 챕터 번호, fallbackMatch[2] = 제목
+                const chapterNumber = fallbackMatch[1]; // 문자열 "1" (인덱스 1이 맞음)
+                const chapterTitle = (fallbackMatch[2] || '').trim();
+                
+                // 디버깅: fallback 정규식 매칭 결과 확인
+                console.warn('[자동 저장] fallback 정규식 매칭 결과:', {
+                    전체매칭: fallbackMatch[0],
+                    챕터번호_매칭: fallbackMatch[1],
+                    제목_매칭: fallbackMatch[2],
+                    finalAttributeText: finalAttributeText,
+                    인덱스_확인: `fallbackMatch[1] = ${fallbackMatch[1]}, fallbackMatch.length = ${fallbackMatch.length}`
+                });
+                
+                chapter = {
+                    number: chapterNumber, // fallbackMatch[1] 사용 (첫 번째 캡처 그룹 = 챕터 번호)
+                    title: chapterTitle || `제${chapterNumber}장`
+                };
+                console.warn('[자동 저장] 챕터 정보 추출 (fallback, 부정확할 수 있음):', { 
+                    finalAttributeText,
+                    fullAttributeText,
+                    chapterNumber: chapter.number, 
+                    chapterTitle: chapter.title,
+                    타입_확인: typeof chapter.number
+                });
             }
         }
         
@@ -327,9 +489,29 @@ document.addEventListener('DOMContentLoaded', () => {
             const result = await response.json().catch(() => ({}));
             console.log('[자동 저장] 결과:', result);
             
+            // 디버깅: 서버 응답에서 저장된 속성 확인
+            // 서버 응답 구조: { ok: true, record: { attribute: { text: ... }, chapter: {...} }, files: {...} }
+            const savedRecord = result.record || {};
+            const savedAttribute = savedRecord.attribute || {};
+            const savedChapter = savedRecord.chapter || {};
+            
+            if (result.ok && savedAttribute.text) {
+                console.log('[자동 저장] 서버에 저장된 속성:', {
+                    저장된_속성: savedAttribute.text,
+                    저장한_속성: fullAttributeText,
+                    저장된_챕터: savedChapter,
+                    추출한_챕터: chapter,
+                    일치여부_속성: savedAttribute.text === fullAttributeText,
+                    일치여부_챕터: savedChapter.number === chapter?.number
+                });
+            }
+            
             if (result.ok) {
                 if (typeof window.addRightLog === 'function') {
-                    window.addRightLog('info', `[우측 저장] 저장 완료: "${fullAttributeText.substring(0, 50)}${fullAttributeText.length > 50 ? '...' : ''}"`);
+                    // 저장된 속성 텍스트를 정확히 표시 (서버 응답의 record.attribute.text 사용)
+                    const savedAttributeText = savedAttribute.text || fullAttributeText;
+                    const savedChapterInfo = savedChapter.number ? ` (챕터 ${savedChapter.number})` : '';
+                    window.addRightLog('info', `[우측 저장] 저장 완료: "${savedAttributeText.substring(0, 50)}${savedAttributeText.length > 50 ? '...' : ''}"${savedChapterInfo}`);
                 }
                 updateSaveStatus('✓ 저장 완료!', 'success');
                 lastSavedAttribute = fullAttributeText;
@@ -349,7 +531,19 @@ document.addEventListener('DOMContentLoaded', () => {
                     });
                 }
                 
-                // 입력 필드는 초기화하지 않음 (사용자 요청)
+                // 데이터 입력란 초기화
+                if ($dataInput) {
+                    $dataInput.value = '';
+                    $dataInput.style.height = 'auto';
+                    // BIT 정보 초기화
+                    if ($dataBitInfo) {
+                        $dataBitInfo.textContent = 'BIT: 계산 중...';
+                    }
+                    // 로컬 스토리지에서도 제거
+                    localStorage.removeItem(STORAGE_KEY_DATA_TEXT);
+                    console.log('[자동 저장] 데이터 입력란 초기화 완료');
+                }
+                
                 // 저장 완료 후 상태만 업데이트
                 setTimeout(() => {
                     updateSaveStatus('', '');
@@ -357,20 +551,51 @@ document.addEventListener('DOMContentLoaded', () => {
                 
                 // 자동 호출: 좌측 목록 새로고침 (저장 완료 후)
                 setTimeout(() => {
-                    // 속성 필터가 있으면 해당 필터로 목록 새로고침
-                    if ($attributeFilterInput && $attributeFilterInput.value.trim()) {
-                        loadAttributes();
-                    } else {
-                        // 속성 필터가 없으면 소설 제목으로 자동 필터링
-                        if ($attributeFilterInput && novelTitle) {
-                            $attributeFilterInput.value = novelTitle;
+                    // 저장된 속성 텍스트를 기반으로 필터 업데이트
+                    // 서버 응답에서 저장된 속성 텍스트 사용 (가장 정확함)
+                    // 서버 응답 구조: result.record.attribute.text
+                    const savedAttributeText = savedAttribute.text || fullAttributeText;
+                    
+                    // savedAttributeText 형식: "소설 제목 → 챕터 N: 제목 → 속성명"
+                    // 필터에는 "소설 제목 → 챕터 N: 제목"까지 포함하도록 설정
+                    if ($attributeFilterInput) {
+                        // 저장된 속성 텍스트에서 챕터까지 포함한 부분 추출
+                        const parts = savedAttributeText.split(' → ');
+                        let filterText = '';
+                        
+                        if (parts.length >= 2) {
+                            // "소설 제목 → 챕터 N: 제목"까지 포함
+                            filterText = parts.slice(0, 2).join(' → ');
+                        } else if (parts.length === 1) {
+                            // 소설 제목만 있는 경우
+                            filterText = parts[0];
+                        } else {
+                            // 소설 제목으로 기본 설정
+                            filterText = novelTitle || '';
+                        }
+                        
+                        // 디버깅: 필터 설정 확인
+                        console.log('[자동 저장] 좌측 필터 설정:', {
+                            저장된_속성: savedAttributeText,
+                            설정할_필터: filterText
+                        });
+                        
+                        // 필터 입력 필드 업데이트 (저장된 속성과 일치하도록)
+                        if (filterText) {
+                            $attributeFilterInput.value = filterText;
                             // 필터 저장
                             saveFilterValues();
+                            loadAttributes();
+                        } else if ($attributeFilterInput.value.trim()) {
+                            // 필터가 이미 있으면 그대로 사용
                             loadAttributes();
                         } else {
                             // 소설 목록 표시
                             loadNovelList();
                         }
+                    } else {
+                        // 속성 필터 입력 필드가 없으면 소설 목록 표시
+                        loadNovelList();
                     }
                 }, 500);
             } else {
@@ -446,6 +671,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
     
+    // 다음 챕터로 단순 이동 (요약 생성 없음)
     window.showNextChapter = function(novelTitle) {
         const storageKey = `chapterListIndex_${novelTitle}`;
         let currentIndex = parseInt(localStorage.getItem(storageKey) || '0', 10);
@@ -454,14 +680,239 @@ document.addEventListener('DOMContentLoaded', () => {
         loadChapterList(novelTitle);
     };
     
+    // 요약 버튼 클릭 시 요약 생성 및 다음 챕터로 이동
+    window.showSummaryChapter = async function(novelTitle) {
+        console.log('[요약 챕터] 버튼 클릭됨:', novelTitle);
+        
+        if (!novelTitle) {
+            console.error('[요약 챕터] 소설 제목이 없습니다.');
+            return;
+        }
+        
+        const storageKey = `chapterListIndex_${novelTitle}`;
+        let currentIndex = parseInt(localStorage.getItem(storageKey) || '0', 10);
+        console.log('[요약 챕터] 현재 인덱스:', currentIndex);
+        
+        try {
+            // 챕터 구성 데이터 가져오기
+            const url = getServerUrl('/api/attributes/all');
+            const response = await fetch(url);
+            
+            if (!response.ok) {
+                console.warn('[요약 챕터] 속성 목록 조회 실패:', response.status);
+                return;
+            }
+            
+            const data = await response.json();
+            if (!data.ok || !data.attributes) {
+                console.warn('[요약 챕터] 속성 데이터 없음');
+                return;
+            }
+            
+            // "챕터 구성" 속성 찾기
+            const chapterStructureAttr = data.attributes.find(attr => {
+                const attrText = (attr.text || '').trim();
+                if (!attrText || !attrText.includes(' → ')) return false;
+                const parts = attrText.split(' → ').map(p => p.trim()).filter(Boolean);
+                return parts.length === 2 && parts[0] === novelTitle && parts[1] === '챕터 구성';
+            });
+            
+            if (!chapterStructureAttr) {
+                console.warn('[요약 챕터] 챕터 구성 속성을 찾을 수 없습니다.');
+                return;
+            }
+            
+            // 챕터 구성 데이터 가져오기
+            const dataUrl = getServerUrl(`/api/attributes/data?bitMax=${chapterStructureAttr.bitMax}&bitMin=${chapterStructureAttr.bitMin}&limit=1`);
+            const dataResponse = await fetch(dataUrl);
+            
+            if (!dataResponse.ok) {
+                console.warn('[요약 챕터] 챕터 구성 데이터 조회 실패:', dataResponse.status);
+                return;
+            }
+            
+            const dataData = await dataResponse.json();
+            if (!dataData.ok || !dataData.items || dataData.items.length === 0) {
+                console.warn('[요약 챕터] 챕터 구성 데이터가 없습니다.');
+                return;
+            }
+            
+            // 챕터 구성 파싱
+            let chapterStructureData;
+            try {
+                chapterStructureData = JSON.parse(dataData.items[0].s || dataData.items[0].text || '{}');
+            } catch (parseError) {
+                console.error('[요약 챕터] JSON 파싱 오류:', parseError);
+                return;
+            }
+            
+            const chapters = chapterStructureData.chapters || [];
+            console.log('[요약 챕터] 챕터 수:', chapters.length, '현재 인덱스:', currentIndex);
+            
+            // 현재 챕터의 요약 생성 (저장하지 않음)
+            let summaryText = null;
+            if (currentIndex >= 0 && currentIndex < chapters.length) {
+                summaryText = await generateChapterSummaryWithoutSave(novelTitle, chapters, currentIndex);
+            }
+            
+            // 범위 체크: 다음 인덱스가 유효한지 확인
+            if (currentIndex + 1 >= chapters.length) {
+                // 마지막 챕터이면 새 챕터 생성
+                console.log('[요약 챕터] 마지막 챕터입니다. 새 챕터를 생성합니다.');
+                
+                // 새 챕터 번호 계산 (마지막 챕터 번호 + 1)
+                const lastChapter = chapters[chapters.length - 1];
+                const lastChapterNum = parseInt(lastChapter.number || String(chapters.length), 10);
+                const newChapterNum = lastChapterNum + 1;
+                
+                // 새 챕터 생성 (과거 줄거리 목록 추가)
+                const newChapter = {
+                    number: String(newChapterNum),
+                    title: `제${newChapterNum}장`,
+                    scenes: ['과거 줄거리', '배경 설정', '감정/분위기', '테마/주제', '스타일/톤', '주요 사건', '등장인물']
+                };
+                
+                // 챕터 목록에 추가
+                chapters.push(newChapter);
+                
+                // 챕터 구성 저장
+                await saveChapterStructure(novelTitle, chapters);
+                
+                // 인덱스 증가 (새 챕터로 이동)
+                currentIndex++;
+                localStorage.setItem(storageKey, String(currentIndex));
+                
+                // 챕터 목록 다시 로드
+                await loadChapterList(novelTitle);
+                
+                // 새 챕터 선택
+                const chapterFullTitle = `챕터 ${newChapter.number}: ${newChapter.title}`;
+                await selectChapterItem(novelTitle, chapterFullTitle);
+                
+                // 요약 텍스트가 있으면 대화 상자에 N/B AI 응답으로 표시 (GPT AI가 응답하지 않고, N/B AI가 응답)
+                if (summaryText) {
+                    // N/B AI 응답 중 상태로 설정 (GPT AI 응답 차단)
+                    if (typeof window.setNBAIResponding === 'function') {
+                        window.setNBAIResponding(true);
+                    }
+                    
+                    // 대화 상자에 N/B AI 응답으로 표시 (GPT AI가 아닌 N/B AI)
+                    if (typeof window.appendMessage === 'function') {
+                        window.appendMessage('assistant', summaryText, false, 'nb');
+                        console.log('[요약 챕터] 대화 상자에 N/B AI 응답으로 요약 표시 완료');
+                    }
+                    
+                    // N/B AI 응답 완료 상태로 설정 (응답 표시 후)
+                    setTimeout(() => {
+                        if (typeof window.setNBAIResponding === 'function') {
+                            window.setNBAIResponding(false);
+                        }
+                    }, 100);
+                    
+                    // 속성 필드에 속성 입력 (다음 챕터의 과거 줄거리 속성)
+                    const pastSummaryAttribute = `${novelTitle} → ${chapterFullTitle} → 과거 줄거리`;
+                    if ($attributeInput) {
+                        $attributeInput.value = pastSummaryAttribute;
+                        localStorage.setItem(STORAGE_KEY_ATTRIBUTE_TEXT, pastSummaryAttribute);
+                        // 속성 입력 이벤트 트리거
+                        const attributeInputEvent = new Event('input', { bubbles: true });
+                        $attributeInput.dispatchEvent(attributeInputEvent);
+                    }
+                    
+                    // 데이터 텍스트 필드는 비워두고 사용자가 대화 상자에서 복사해서 입력하도록 함
+                    // (데이터 텍스트 필드에 직접 입력하지 않음)
+                    if (typeof window.addRightLog === 'function') {
+                        window.addRightLog('info', `[요약 챕터] 대화 상자에 요약이 표시되었습니다. 복사하여 데이터 텍스트 필드에 입력하세요.`);
+                    }
+                }
+                
+                if (typeof window.addRightLog === 'function') {
+                    window.addRightLog('info', `[새 챕터 생성] ${chapterFullTitle} 생성 완료`);
+                }
+            } else {
+                // 인덱스 증가
+                currentIndex++;
+                localStorage.setItem(storageKey, String(currentIndex));
+                console.log('[요약 챕터] 인덱스 증가:', currentIndex);
+                
+                // 챕터 목록 다시 로드 (인덱스 업데이트 후)
+                await loadChapterList(novelTitle);
+                
+                // 현재 챕터 정보로 자동 선택
+                if (currentIndex < chapters.length) {
+                    const currentChapter = chapters[currentIndex];
+                    const chapterFullTitle = `챕터 ${currentChapter.number}: ${currentChapter.title}`;
+                    console.log('[요약 챕터] 챕터 선택:', chapterFullTitle);
+                    
+                    // 자동으로 챕터 선택 함수 호출
+                    await selectChapterItem(novelTitle, chapterFullTitle);
+                    
+                    // 요약 텍스트가 있으면 대화 상자에 N/B AI 응답으로 표시 (GPT AI가 응답하지 않고, N/B AI가 응답)
+                    if (summaryText) {
+                        // N/B AI 응답 중 상태로 설정 (GPT AI 응답 차단)
+                        if (typeof window.setNBAIResponding === 'function') {
+                            window.setNBAIResponding(true);
+                        }
+                        
+                        // 대화 상자에 N/B AI 응답으로 표시 (GPT AI가 아닌 N/B AI)
+                        if (typeof window.appendMessage === 'function') {
+                            window.appendMessage('assistant', summaryText, false, 'nb');
+                            console.log('[요약 챕터] 대화 상자에 N/B AI 응답으로 요약 표시 완료');
+                        }
+                        
+                        // N/B AI 응답 완료 상태로 설정 (응답 표시 후)
+                        setTimeout(() => {
+                            if (typeof window.setNBAIResponding === 'function') {
+                                window.setNBAIResponding(false);
+                            }
+                        }, 100);
+                        
+                        // 속성 필드에 속성 입력 (다음 챕터의 과거 줄거리 속성)
+                        const pastSummaryAttribute = `${novelTitle} → ${chapterFullTitle} → 과거 줄거리`;
+                        if ($attributeInput) {
+                            $attributeInput.value = pastSummaryAttribute;
+                            localStorage.setItem(STORAGE_KEY_ATTRIBUTE_TEXT, pastSummaryAttribute);
+                            // 속성 입력 이벤트 트리거
+                            const attributeInputEvent = new Event('input', { bubbles: true });
+                            $attributeInput.dispatchEvent(attributeInputEvent);
+                        }
+                        
+                        // 데이터 텍스트 필드는 비워두고 사용자가 대화 상자에서 복사해서 입력하도록 함
+                        // (데이터 텍스트 필드에 직접 입력하지 않음)
+                        if (typeof window.addRightLog === 'function') {
+                            window.addRightLog('info', `[요약 챕터] 대화 상자에 요약이 표시되었습니다. 복사하여 데이터 텍스트 필드에 입력하세요.`);
+                        }
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('[요약 챕터] 오류:', error);
+            if (typeof window.addRightLog === 'function') {
+                window.addRightLog('error', `[요약 챕터] 오류: ${error.message}`);
+            }
+        }
+    };
+    
     // 챕터 항목 클릭 시 속성 필드에 입력 (전체 경로)
     window.selectChapterItem = async function(novelTitle, chapterTitle) {
-        // 속성 필드에 소설 제목 입력
+        // 속성 필드에 소설 제목 입력 (자동 저장 트리거 없이)
         if ($novelTitleInput) {
+            // 값만 변경하고 이벤트는 트리거하지 않음 (제목 변경 시 자동 저장 방지)
             $novelTitleInput.value = novelTitle;
-            // 이벤트 트리거하여 BIT 값 재계산
-            const inputEvent = new Event('input', { bubbles: true });
-            $novelTitleInput.dispatchEvent(inputEvent);
+            // 로컬 스토리지만 저장
+            localStorage.setItem(STORAGE_KEY_NOVEL_TITLE, novelTitle);
+            
+            // 속성 입력란의 BIT 값만 재계산 (input 이벤트는 트리거하지 않음)
+            if ($attributeInput) {
+                const attributeValue = $attributeInput.value || '';
+                if (attributeValue) {
+                    const fullAttributeText = `${novelTitle} → ${attributeValue}`;
+                    const attributeBits = calculateBitValues(fullAttributeText);
+                    if (attributeBits.max !== null && attributeBits.min !== null && $attributeBitInfo) {
+                        $attributeBitInfo.textContent = `BIT: ${attributeBits.max.toFixed(15)}, ${attributeBits.min.toFixed(15)}`;
+                    }
+                }
+            }
         }
         
         // 챕터 제목에서 챕터 번호 추출
@@ -476,13 +927,33 @@ document.addEventListener('DOMContentLoaded', () => {
         const chapterFullTitle = `챕터 ${chapterNum}: ${chapterTitleOnly}`;
         
         // 챕터 제목 클릭 시에는 "챕터 N: 제목"까지만 입력 (구성 항목 제외)
+        // 속성 입력란에 챕터 제목만 입력 (소설 제목 제외)
         if ($attributeInput) {
             $attributeInput.value = chapterFullTitle;
             // 로컬 스토리지에 저장
             localStorage.setItem(STORAGE_KEY_ATTRIBUTE_TEXT, chapterFullTitle);
-            // 이벤트 트리거하여 BIT 값 재계산
-            const inputEvent = new Event('input', { bubbles: true });
-            $attributeInput.dispatchEvent(inputEvent);
+            
+            // BIT 값 재계산 및 표시 (일관성 있게 처리)
+            const fullAttributeText = `${novelTitle} → ${chapterFullTitle}`;
+            const attributeBits = calculateBitValues(fullAttributeText);
+            if (attributeBits.max !== null && attributeBits.min !== null && $attributeBitInfo) {
+                $attributeBitInfo.textContent = `BIT: ${attributeBits.max.toFixed(15)}, ${attributeBits.min.toFixed(15)}`;
+            }
+            
+            // 자동 저장 트리거 (속성과 데이터가 모두 있으면)
+            // 데이터 입력란에 값이 있으면 자동 저장 호출
+            if ($dataInput && $dataInput.value.trim()) {
+                triggerAutoSave();
+            }
+        }
+        
+        // 대화 상자에 챕터의 모든 속성과 데이터 추가
+        await appendChapterAllDataToChatInput(novelTitle, chapterFullTitle, chapterNum);
+        
+        // 챕터 데이터 로드 후에도 속성 입력란에 챕터 제목만 유지되도록 보장
+        if ($attributeInput && $attributeInput.value !== chapterFullTitle) {
+            $attributeInput.value = chapterFullTitle;
+            localStorage.setItem(STORAGE_KEY_ATTRIBUTE_TEXT, chapterFullTitle);
         }
         
         // 좌측 속성 필터에 소설 제목 입력
@@ -557,15 +1028,15 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // 장면 항목 클릭 시 속성 필드에 입력 (전체 경로 포함, 현재 챕터 번호 확인)
     window.selectSceneItem = async function(novelTitle, sceneText, currentChapterNum) {
-        // 속성 필드에 소설 제목 입력
+        // 속성 필드에 소설 제목 입력 (자동 저장 트리거 없이)
         if ($novelTitleInput) {
+            // 값만 변경하고 이벤트는 트리거하지 않음 (제목 변경 시 자동 저장 방지)
             $novelTitleInput.value = novelTitle;
-            // 이벤트 트리거하여 BIT 값 재계산
-            const inputEvent = new Event('input', { bubbles: true });
-            $novelTitleInput.dispatchEvent(inputEvent);
+            // 로컬 스토리지만 저장
+            localStorage.setItem(STORAGE_KEY_NOVEL_TITLE, novelTitle);
         }
         
-        // 현재 챕터 제목 찾기 (챕터 목록에서)
+        // 현재 챕터 제목 찾기 (loadChapterList와 동일한 방식으로 챕터 정보 수집)
         let currentChapterTitle = null;
         if (currentChapterNum) {
             try {
@@ -575,6 +1046,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (response.ok) {
                     const data = await response.json();
                     if (data.ok && data.attributes) {
+                        // loadChapterList와 동일한 방식으로 챕터 정보 수집
+                        const chapterMap = new Map(); // chapterKey -> { number, title, scenes: [] }
+                        
                         for (const attr of data.attributes) {
                             const attrText = (attr.text || '').trim();
                             if (!attrText || !attrText.includes(' → ')) continue;
@@ -586,17 +1060,47 @@ document.addEventListener('DOMContentLoaded', () => {
                             if (attrNovelTitle !== novelTitle) continue;
                             
                             const chapterPart = parts[1];
-                            const attrChapterMatch = chapterPart.match(/챕터\s*(\d+)(?:\s*[:：]\s*(.+))?/i);
-                            if (attrChapterMatch && parseInt(attrChapterMatch[1], 10) === parseInt(currentChapterNum, 10)) {
-                                const chapterTitleOnly = attrChapterMatch[2] || `제${currentChapterNum}장`;
-                                currentChapterTitle = `챕터 ${currentChapterNum}: ${chapterTitleOnly}`;
-                                break;
+                            const chapterMatch = chapterPart.match(/챕터\s*(\d+)(?:\s*[:：]\s*(.+))?/i);
+                            if (chapterMatch) {
+                                const chapterNum = chapterMatch[1];
+                                const chapterTitle = chapterMatch[2] || `제${chapterNum}장`;
+                                const chapterKey = `챕터 ${chapterNum}`;
+                                
+                                // 해당 챕터 번호에 대한 정보만 저장 (여러 속성에서 같은 챕터 정보가 나올 수 있음)
+                                if (!chapterMap.has(chapterKey)) {
+                                    chapterMap.set(chapterKey, {
+                                        number: chapterNum,
+                                        title: chapterTitle
+                                    });
+                                } else {
+                                    // 이미 저장된 챕터가 있으면, 제목이 있는 것을 우선 (제목 없이 저장된 경우 대비)
+                                    const existing = chapterMap.get(chapterKey);
+                                    if (!existing.title || existing.title === `제${chapterNum}장`) {
+                                        if (chapterTitle && chapterTitle !== `제${chapterNum}장`) {
+                                            existing.title = chapterTitle;
+                                        }
+                                    }
+                                }
                             }
+                        }
+                        
+                        // 챕터 정보가 없으면 기본값 사용 (loadChapterList와 동일)
+                        const chapterKey = `챕터 ${currentChapterNum}`;
+                        if (chapterMap.has(chapterKey)) {
+                            const chapter = chapterMap.get(chapterKey);
+                            currentChapterTitle = `챕터 ${currentChapterNum}: ${chapter.title}`;
+                        } else {
+                            // 챕터 정보가 없으면 기본값 사용
+                            currentChapterTitle = `챕터 ${currentChapterNum}: 제${currentChapterNum}장`;
                         }
                     }
                 }
             } catch (error) {
                 console.warn('[장면 선택] 챕터 제목 찾기 오류:', error);
+                // 오류 발생 시 기본값 사용
+                if (currentChapterNum) {
+                    currentChapterTitle = `챕터 ${currentChapterNum}: 제${currentChapterNum}장`;
+                }
             }
         }
         
@@ -666,10 +1170,26 @@ document.addEventListener('DOMContentLoaded', () => {
                         $attributeInput.value = finalValue;
                         // 로컬 스토리지에 저장
                         localStorage.setItem(STORAGE_KEY_ATTRIBUTE_TEXT, finalValue);
-                        // 이벤트 트리거하여 BIT 값 재계산
-                        const inputEvent = new Event('input', { bubbles: true });
-                        $attributeInput.dispatchEvent(inputEvent);
+                        
+                        // BIT 값 재계산 및 표시 (일관성 있게 처리)
+                        const fullAttributeText = `${novelTitle} → ${finalValue}`;
+                        const attributeBits = calculateBitValues(fullAttributeText);
+                        if (attributeBits.max !== null && attributeBits.min !== null && $attributeBitInfo) {
+                            $attributeBitInfo.textContent = `BIT: ${attributeBits.max.toFixed(15)}, ${attributeBits.min.toFixed(15)}`;
+                        }
+                        
+                        // 자동 저장 트리거 (속성과 데이터가 모두 있으면)
+                        // 데이터 입력란에 값이 있으면 자동 저장 호출
+                        if ($dataInput && $dataInput.value.trim()) {
+                            triggerAutoSave();
+                        }
                     }
+                    
+                    // 대화 상자에 장면 정보 추가
+                    const sceneAttributeText = currentChapterTitle 
+                        ? `${novelTitle} → ${currentChapterTitle} → ${sceneText}`
+                        : `${novelTitle} → 챕터 ${currentChapterNum} → ${sceneText}`;
+                    appendAttributeToChatInput(sceneAttributeText);
                     
                     // 좌측 속성 필터에 소설 제목 입력
                     if ($attributeFilterInput) {
@@ -723,9 +1243,24 @@ document.addEventListener('DOMContentLoaded', () => {
                                 $attributeInput.value = sceneText;
                                 // 로컬 스토리지에 저장
                                 localStorage.setItem(STORAGE_KEY_ATTRIBUTE_TEXT, sceneText);
-                                const inputEvent = new Event('input', { bubbles: true });
-                                $attributeInput.dispatchEvent(inputEvent);
+                                
+                                // BIT 값 재계산 및 표시 (일관성 있게 처리)
+                                const fullAttributeText = `${novelTitle} → ${sceneText}`;
+                                const attributeBits = calculateBitValues(fullAttributeText);
+                                if (attributeBits.max !== null && attributeBits.min !== null && $attributeBitInfo) {
+                                    $attributeBitInfo.textContent = `BIT: ${attributeBits.max.toFixed(15)}, ${attributeBits.min.toFixed(15)}`;
+                                }
+                                
+                                // 자동 저장 트리거 (속성과 데이터가 모두 있으면)
+                                // 데이터 입력란에 값이 있으면 자동 저장 호출
+                                if ($dataInput && $dataInput.value.trim()) {
+                                    triggerAutoSave();
+                                }
                             }
+                            
+                            // 대화 상자에 장면 정보 추가 (else 블록)
+                            const sceneAttributeTextElse = `${novelTitle} → ${sceneText}`;
+                            appendAttributeToChatInput(sceneAttributeTextElse);
                     
                     // 좌측 필터도 설정
                     if ($attributeFilterInput) {
@@ -828,6 +1363,61 @@ document.addEventListener('DOMContentLoaded', () => {
             // 속성 텍스트에서 챕터 구조 추출 (형식: "소설 제목 → 챕터 1: 제1장 → 속성")
             const chapterMap = new Map(); // chapterKey -> { number, title, scenes: [] }
             
+            // 1. 먼저 "챕터 구성" 속성에서 챕터 정보 로드 (데이터 정리 후에도 유지되도록)
+            const chapterStructureAttr = data.attributes.find(attr => {
+                const attrText = (attr.text || '').trim();
+                if (!attrText || !attrText.includes(' → ')) return false;
+                const parts = attrText.split(' → ').map(p => p.trim()).filter(Boolean);
+                return parts.length === 2 && parts[0] === novelTitle && parts[1] === '챕터 구성';
+            });
+            
+            if (chapterStructureAttr) {
+                // "챕터 구성" 속성의 데이터를 별도로 가져오기
+                try {
+                    const dataUrl = getServerUrl(`/api/attributes/data?bitMax=${chapterStructureAttr.bitMax}&bitMin=${chapterStructureAttr.bitMin}&limit=1`);
+                    const dataResponse = await fetch(dataUrl);
+                    if (dataResponse.ok) {
+                        const dataResult = await dataResponse.json();
+                        if (dataResult.ok && dataResult.items && dataResult.items.length > 0) {
+                            const item = dataResult.items[0];
+                            if (item.data && item.data.text) {
+                                try {
+                                    const chapterStructureData = JSON.parse(item.data.text);
+                                    if (chapterStructureData && chapterStructureData.chapters && Array.isArray(chapterStructureData.chapters)) {
+                                        for (const ch of chapterStructureData.chapters) {
+                                            const chapterKey = `챕터 ${ch.number}`;
+                                            if (!chapterMap.has(chapterKey)) {
+                                                chapterMap.set(chapterKey, {
+                                                    number: ch.number,
+                                                    title: ch.title || `제${ch.number}장`,
+                                                    scenes: Array.isArray(ch.scenes) ? [...ch.scenes] : []
+                                                });
+                                            } else {
+                                                // 이미 있는 챕터는 장면 목록 병합 (중복 제거)
+                                                const existing = chapterMap.get(chapterKey);
+                                                if (Array.isArray(ch.scenes)) {
+                                                    for (const scene of ch.scenes) {
+                                                        if (!existing.scenes.includes(scene)) {
+                                                            existing.scenes.push(scene);
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        console.log('[챕터 목록] 챕터 구성에서 로드:', { chapters: chapterStructureData.chapters.length });
+                                    }
+                                } catch (e) {
+                                    console.warn('[챕터 목록] 챕터 구성 데이터 파싱 오류:', e);
+                                }
+                            }
+                        }
+                    }
+                } catch (e) {
+                    console.warn('[챕터 목록] 챕터 구성 데이터 로드 오류:', e);
+                }
+            }
+            
+            // 2. 실제 속성 데이터에서 챕터 정보 추출 및 장면 정보 보완
             for (const attr of data.attributes) {
                 const attrText = (attr.text || '').trim();
                 if (!attrText || !attrText.includes(' → ')) continue;
@@ -838,6 +1428,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 const attrNovelTitle = parts[0];
                 if (attrNovelTitle !== novelTitle) continue;
                 
+                // "챕터 구성" 속성은 건너뛰기 (이미 처리함)
+                if (parts.length === 2 && parts[1] === '챕터 구성') continue;
+                
                 const chapterPart = parts[1]; // "챕터 1: 제1장" 또는 "챕터 1"
                 
                 // 챕터 정보 파싱
@@ -847,12 +1440,21 @@ document.addEventListener('DOMContentLoaded', () => {
                     const chapterTitle = chapterMatch[2] || `제${chapterNum}장`;
                     const chapterKey = `챕터 ${chapterNum}`;
                     
+                    // 챕터가 없으면 추가
                     if (!chapterMap.has(chapterKey)) {
                         chapterMap.set(chapterKey, {
                             number: chapterNum,
                             title: chapterTitle,
                             scenes: []
                         });
+                    } else {
+                        // 제목이 더 정확하면 업데이트
+                        const existing = chapterMap.get(chapterKey);
+                        if (!existing.title || existing.title === `제${chapterNum}장`) {
+                            if (chapterTitle && chapterTitle !== `제${chapterNum}장`) {
+                                existing.title = chapterTitle;
+                            }
+                        }
                     }
                     
                     // 장면 정보 추가 (parts[2] 이상이 있으면)
@@ -871,9 +1473,27 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             
             // 챕터 목록 렌더링 (1개씩만 표시)
-            const chapters = Array.from(chapterMap.values()).sort((a, b) => 
+            let chapters = Array.from(chapterMap.values()).sort((a, b) => 
                 Number(a.number) - Number(b.number)
             );
+            
+            // 챕터 구성이 없으면 자동 생성 (제목이 입력되어 있는 경우)
+            if (chapters.length === 0 && novelTitle && novelTitle.trim()) {
+                // 기본 챕터 구성 생성: 챕터 1: 제1장
+                const defaultChapter = {
+                    number: '1',
+                    title: '제1장',
+                    scenes: ['배경 설정', '감정/분위기', '테마/주제', '스타일/톤', '주요 사건', '등장인물']
+                };
+                chapters = [defaultChapter];
+                
+                console.log('[챕터 목록] 챕터 구성 없음 - 기본 구성 자동 생성:', defaultChapter);
+                
+                // 자동 생성된 챕터 구성을 서버에 저장
+                saveChapterStructure(novelTitle, chapters).catch(err => {
+                    console.warn('[챕터 구성 저장] 오류:', err);
+                });
+            }
             
             if (chapters.length === 0) {
                 $chapterListContainer.innerHTML = `
@@ -906,11 +1526,18 @@ document.addEventListener('DOMContentLoaded', () => {
                     <span class="small text-muted">
                         ${currentIndex + 1} / ${chapters.length}
                     </span>
-                    <button class="btn btn-sm btn-outline-light" ${currentIndex >= chapters.length - 1 ? 'disabled' : ''} 
+                    <div style="display: flex; gap: 5px;">
+                        <button class="btn btn-sm btn-outline-light" 
                             onclick="window.showNextChapter('${escapeHtml(novelTitle).replace(/'/g, "\\'")}')" 
                             style="min-width: 60px;">
                         다음 →
                     </button>
+                        <button class="btn btn-sm btn-outline-primary" 
+                                onclick="window.showSummaryChapter('${escapeHtml(novelTitle).replace(/'/g, "\\'")}')" 
+                                style="min-width: 60px;">
+                            📝 요약
+                        </button>
+                    </div>
                 </div>
             `;
             
@@ -1003,11 +1630,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 $novelTitleInputForChapter.dispatchEvent(inputEvent);
             }
             
-            // 자동 저장 트리거 (소설 제목 변경 시)
-            clearTimeout(novelTitleTimer);
-            novelTitleTimer = setTimeout(() => {
-                triggerAutoSave();
-            }, 300);
+            // 제목 변경 시에는 자동 저장하지 않음 (챕터 구성 목록에서 클릭할 때만 저장)
         });
     }
     
@@ -1662,7 +2285,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         window.addLeftLog('info', `[좌측 조회] 조회 완료: ${attributesWithData.length}개 속성 (총 ${totalDataCount}개 데이터)`);
                     }
                     for (const { attr, dataItems } of attributesWithData) {
-                        const dataItemsHtml = dataItems.map(item => {
+                        const dataItemsHtml = dataItems.map((item, itemIndex) => {
                             const text = item.s || item.text || item.data?.text || '';
                             const displayText = text.length > 200 ? text.substring(0, 200) + '...' : text;
                             const itemBits = item.max !== undefined && item.min !== undefined 
@@ -1679,10 +2302,20 @@ document.addEventListener('DOMContentLoaded', () => {
                                 .replace(/\n/g, ' ')
                                 .replace(/\r/g, '');
                             
+                            // 전체 텍스트를 base64로 인코딩하여 data 속성에 저장 (안전한 방법)
+                            const textBase64 = btoa(unescape(encodeURIComponent(text || '')));
+                            const uniqueDataId = `data-text-${attr.bitMax}-${attr.bitMin}-${itemBits.max}-${itemBits.min}-${itemIndex}`;
+                            
+                            // 전역 데이터 저장소에 텍스트 저장 (안전한 방법)
+                            if (!window.dataTextStorage) {
+                                window.dataTextStorage = {};
+                            }
+                            window.dataTextStorage[uniqueDataId] = text;
+                            
                             return `
                                 <div class="data-item" onclick="event.stopPropagation()">
                                     <div class="data-item-header">
-                                        <div class="data-text">${escapeHtml(displayText)}</div>
+                                        <div class="data-text" data-text-id="${uniqueDataId}" onclick="event.stopPropagation(); const textId = this.getAttribute('data-text-id'); if (textId && window.dataTextStorage && window.dataTextStorage[textId]) { window.showDataModal(window.dataTextStorage[textId]); }" style="cursor: pointer; flex: 1; padding: 5px; border-radius: 3px; transition: background 0.2s;" onmouseover="this.style.background='rgba(124, 92, 255, 0.1)'" onmouseout="this.style.background='transparent'" title="클릭하여 전체 내용 보기">${escapeHtml(displayText)}</div>
                                         <button class="btn-icon btn-delete" onclick="event.stopPropagation(); deleteDataItem('${attr.bitMax}', '${attr.bitMin}', '${itemBits.max}', '${itemBits.min}', '${textEscaped}')" title="삭제">🗑️</button>
                                     </div>
                                     <div class="data-bit">BIT: ${itemBits.max !== undefined ? itemBits.max.toFixed(15) : '-'}, ${itemBits.min !== undefined ? itemBits.min.toFixed(15) : '-'}</div>
@@ -1738,6 +2371,87 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     };
     
+    // 데이터 전체 내용 모달 표시
+    window.showDataModal = function(text) {
+        if (!text) return;
+        
+        // 모달 생성
+        const modal = document.createElement('div');
+        modal.className = 'modal fade';
+        modal.setAttribute('tabindex', '-1');
+        modal.setAttribute('aria-labelledby', 'dataModalLabel');
+        modal.setAttribute('aria-hidden', 'true');
+        
+        const dlg = document.createElement('div');
+        dlg.className = 'modal-dialog modal-lg modal-dialog-scrollable';
+        
+        const content = document.createElement('div');
+        content.className = 'modal-content';
+        
+        const header = document.createElement('div');
+        header.className = 'modal-header';
+        header.innerHTML = `
+            <h5 class="modal-title" id="dataModalLabel">📄 데이터 전체 내용</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        `;
+        
+        const body = document.createElement('div');
+        body.className = 'modal-body';
+        body.style.whiteSpace = 'pre-wrap';
+        body.style.wordBreak = 'break-word';
+        body.style.maxHeight = '70vh';
+        body.style.overflowY = 'auto';
+        body.style.fontFamily = 'monospace';
+        body.style.fontSize = '0.9rem';
+        body.style.lineHeight = '1.6';
+        body.style.padding = '1.5rem';
+        body.style.backgroundColor = 'var(--bg-surface)';
+        body.style.borderRadius = '5px';
+        body.textContent = text;
+        
+        const footer = document.createElement('div');
+        footer.className = 'modal-footer';
+        
+        const copyBtn = document.createElement('button');
+        copyBtn.type = 'button';
+        copyBtn.className = 'btn btn-sm btn-outline-success';
+        copyBtn.textContent = '📋 복사';
+        copyBtn.onclick = () => {
+            copyToClipboard(text);
+            copyBtn.textContent = '✓ 복사됨';
+            setTimeout(() => {
+                copyBtn.textContent = '📋 복사';
+            }, 2000);
+        };
+        
+        const closeBtn = document.createElement('button');
+        closeBtn.type = 'button';
+        closeBtn.className = 'btn btn-sm btn-secondary';
+        closeBtn.setAttribute('data-bs-dismiss', 'modal');
+        closeBtn.textContent = '닫기';
+        
+        footer.appendChild(copyBtn);
+        footer.appendChild(closeBtn);
+        
+        content.appendChild(header);
+        content.appendChild(body);
+        content.appendChild(footer);
+        dlg.appendChild(content);
+        modal.appendChild(dlg);
+        
+        document.body.appendChild(modal);
+        
+        const bsModal = new bootstrap.Modal(modal);
+        bsModal.show();
+        
+        // 모달이 닫힌 후 DOM에서 제거
+        modal.addEventListener('hidden.bs.modal', () => {
+            if (document.body.contains(modal)) {
+                document.body.removeChild(modal);
+            }
+        });
+    };
+    
     // 데이터 토글 함수
     window.toggleData = function(attrId) {
         const dataList = document.getElementById(attrId);
@@ -1754,9 +2468,53 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
     
+    // 대화 상자에 텍스트 추가하고 자동 전송하는 헬퍼 함수
+    function appendToChatInput(text) {
+        const $chatInput = document.getElementById('chatInput');
+        if ($chatInput) {
+            const currentValue = $chatInput.value || '';
+            // 기존 내용이 있으면 줄바꿈 후 추가, 없으면 그냥 추가
+            const newValue = currentValue ? `${currentValue}\n${text}` : text;
+            $chatInput.value = newValue;
+            
+            // textarea 높이 자동 조절
+            $chatInput.style.height = 'auto';
+            $chatInput.style.height = Math.min($chatInput.scrollHeight, 200) + 'px';
+            
+            // 포커스 설정
+            $chatInput.focus();
+            
+            // 입력 이벤트 트리거
+            const inputEvent = new Event('input', { bubbles: true });
+            $chatInput.dispatchEvent(inputEvent);
+            
+            // 자동 전송 (Enter 키 이벤트 트리거)
+            setTimeout(() => {
+                // sendMessage 함수가 있으면 직접 호출
+                if (typeof window.sendMessage === 'function') {
+                    window.sendMessage();
+                } else {
+                    // sendMessage 함수가 없으면 Enter 키 이벤트 트리거
+                    const enterEvent = new KeyboardEvent('keydown', {
+                        key: 'Enter',
+                        code: 'Enter',
+                        keyCode: 13,
+                        which: 13,
+                        bubbles: true,
+                        cancelable: true
+                    });
+                    $chatInput.dispatchEvent(enterEvent);
+                }
+            }, 100);
+        }
+    }
+    
     // 좌측 메뉴에서 속성 클릭 시 우측 패널에 자동 입력
     window.selectAttributeFromList = function(attributeText) {
         if (!attributeText || typeof attributeText !== 'string') return;
+        
+        // 디버깅: 클릭된 속성 텍스트 확인
+        console.log('[속성 선택] 클릭된 속성:', attributeText);
         
         // 속성 필터와 추가 검색 키워드 확인
         const filterText = ($attributeFilterInput && $attributeFilterInput.value || '').trim();
@@ -1772,6 +2530,14 @@ document.addEventListener('DOMContentLoaded', () => {
         const novelTitle = parts[0];
         // 나머지 부분이 속성 텍스트 (소설 제목 제외)
         const attributePart = parts.length > 1 ? parts.slice(1).join(' → ') : '';
+        
+        // 디버깅: 분리된 속성 부분 확인
+        console.log('[속성 선택] 분리 결과:', {
+            전체속성: attributeText,
+            소설제목: novelTitle,
+            속성부분: attributePart,
+            parts: parts
+        });
         
         // 우측 속성 필드에 소설 제목 입력
         if ($novelTitleInput) {
@@ -1806,6 +2572,836 @@ document.addEventListener('DOMContentLoaded', () => {
                 localStorage.setItem(STORAGE_KEY_ATTRIBUTE_TEXT, '');
             }
             console.log('[속성 선택] 필터 있음 - 전체 입력:', { novelTitle, attributePart, fullText: attributeText });
+        }
+        
+        // 대화 상자에 속성 정보 추가 (데이터 포함)
+        appendAttributeToChatInput(attributeText);
+    };
+    
+    // 속성과 데이터를 함께 대화 상자에 추가하는 함수
+    async function appendAttributeToChatInput(attributeText) {
+        // 속성 텍스트로부터 BIT 값 계산
+        const attributeBits = calculateBitValues(attributeText);
+        
+        let chatText = attributeText;
+        
+        // BIT 값이 있으면 데이터 조회
+        if (attributeBits.max !== null && attributeBits.min !== null) {
+            try {
+                const dataUrl = getServerUrl(`/api/attributes/data?bitMax=${attributeBits.max}&bitMin=${attributeBits.min}&limit=10`);
+                const dataResponse = await fetch(dataUrl);
+                
+                if (dataResponse.ok) {
+                    const dataData = await dataResponse.json();
+                    if (dataData.ok && dataData.items && dataData.items.length > 0) {
+                        // 데이터가 있으면 속성과 함께 추가
+                        const dataTexts = dataData.items.map(item => {
+                            const text = item.s || item.text || item.data?.text || '';
+                            return text;
+                        }).filter(text => text && text.length > 0);
+                        
+                        if (dataTexts.length > 0) {
+                            // 속성과 데이터를 구분하여 입력
+                            chatText = `${attributeText}\n\n**데이터:**\n${dataTexts.join('\n\n---\n\n')}`;
+                            console.log('[속성 선택] 데이터 포함하여 대화 입력:', { 
+                                attributeText, 
+                                dataCount: dataTexts.length 
+                            });
+                        }
+                    }
+                }
+            } catch (error) {
+                console.warn('[속성 선택] 데이터 조회 오류:', error);
+                // 오류가 있어도 속성만 입력
+            }
+        }
+        
+        // 대화 상자에 추가
+        appendToChatInput(chatText);
+    };
+    
+    // 다음 챕터에서 "과거 줄거리" 데이터 확인 및 자동 생성
+    async function checkAndGeneratePastSummary(novelTitle, chapters, nextChapterIndex) {
+        try {
+            if (nextChapterIndex < 0 || nextChapterIndex >= chapters.length) {
+                return;
+            }
+            
+            const nextChapter = chapters[nextChapterIndex];
+            const nextChapterFullTitle = `챕터 ${nextChapter.number}: ${nextChapter.title}`;
+            const pastSummaryAttribute = `${novelTitle} → ${nextChapterFullTitle} → 과거 줄거리`;
+            
+            console.log('[과거 줄거리] 확인 시작:', pastSummaryAttribute);
+            
+            // "과거 줄거리" 속성이 있는지 확인
+            const pastSummaryBits = calculateBitValues(pastSummaryAttribute);
+            if (!pastSummaryBits.max || !pastSummaryBits.min) {
+                console.warn('[과거 줄거리] BIT 값 계산 실패');
+                return;
+            }
+            
+            // 데이터 조회
+            const dataUrl = getServerUrl(`/api/attributes/data?bitMax=${pastSummaryBits.max}&bitMin=${pastSummaryBits.min}&limit=1`);
+            const dataResponse = await fetch(dataUrl);
+            
+            if (dataResponse.ok) {
+                const dataData = await dataResponse.json();
+                if (dataData.ok && dataData.items && dataData.items.length > 0) {
+                    // 이미 데이터가 있으면 생성하지 않음
+                    console.log('[과거 줄거리] 이미 데이터가 있습니다.');
+                    return;
+                }
+            }
+            
+            // 데이터가 없으면 현재 챕터까지의 모든 데이터로 요약 생성
+            console.log('[과거 줄거리] 데이터가 없습니다. 자동 생성 시작...');
+            
+            // 현재 챕터까지의 모든 데이터 수집 (다음 챕터 이전까지)
+            const allChapterData = [];
+            const allCharacters = []; // 등장인물 정보 수집
+            
+            for (let i = 0; i < nextChapterIndex && i < chapters.length; i++) {
+                const chapter = chapters[i];
+                const chapterFullTitle = `챕터 ${chapter.number}: ${chapter.title}`;
+                
+                // 해당 챕터의 모든 속성 조회
+                try {
+                    const url = getServerUrl('/api/attributes/all');
+                    const response = await fetch(url);
+                    
+                    if (response.ok) {
+                        const data = await response.json();
+                        if (data.ok && data.attributes) {
+                            // 해당 챕터와 관련된 속성만 필터링
+                            const chapterAttributes = data.attributes.filter(attr => {
+                                const attrText = (attr.text || '').trim();
+                                if (!attrText || !attrText.includes(' → ')) return false;
+                                
+                                const parts = attrText.split(' → ').map(p => p.trim()).filter(Boolean);
+                                if (parts.length < 2) return false;
+                                
+                                const attrNovelTitle = parts[0];
+                                if (attrNovelTitle !== novelTitle) return false;
+                                
+                                const chapterPart = parts[1];
+                                const chapterMatch = chapterPart.match(/챕터\s*(\d+)/i);
+                                if (!chapterMatch || chapterMatch[1] !== chapter.number) return false;
+                                
+                                // "과거 줄거리" 속성은 제외
+                                if (attrText.includes('과거 줄거리')) return false;
+                                
+                                return true;
+                            });
+                            
+                            // 각 속성의 데이터 조회
+                            for (const attr of chapterAttributes) {
+                                try {
+                                    const dataUrl = getServerUrl(`/api/attributes/data?bitMax=${attr.bitMax}&bitMin=${attr.bitMin}&limit=1000`);
+                                    const dataResponse = await fetch(dataUrl);
+                                    
+                                    if (dataResponse.ok) {
+                                        const dataData = await dataResponse.json();
+                                        if (dataData.ok && dataData.items && dataData.items.length > 0) {
+                                            const dataTexts = dataData.items.map(item => {
+                                                const text = item.s || item.text || item.data?.text || '';
+                                                return text;
+                                            }).filter(text => text && text.length > 0);
+                                            
+                                            if (dataTexts.length > 0) {
+                                                const attributePart = attr.text.includes(' → ') 
+                                                    ? attr.text.split(' → ').slice(2).join(' → ') || attr.text.split(' → ')[1]
+                                                    : attr.text;
+                                                
+                                                // 등장인물 속성인지 확인
+                                                const isCharacterAttribute = attributePart.includes('등장인물') || 
+                                                                              attributePart.toLowerCase().includes('character');
+                                                
+                                                if (isCharacterAttribute) {
+                                                    // 등장인물 정보 수집
+                                                    dataTexts.forEach(charText => {
+                                                        if (charText && !allCharacters.includes(charText)) {
+                                                            allCharacters.push(charText);
+                                                        }
+                                                    });
+                                                }
+                                                
+                                                allChapterData.push({
+                                                    chapter: chapterFullTitle,
+                                                    attribute: attributePart,
+                                                    data: dataTexts
+                                                });
+                                            }
+                                        }
+                                    }
+                                } catch (error) {
+                                    console.warn('[과거 줄거리] 속성 데이터 조회 오류:', attr.text, error);
+                                }
+                            }
+                        }
+                    }
+                } catch (error) {
+                    console.warn('[과거 줄거리] 챕터 데이터 조회 오류:', chapterFullTitle, error);
+                }
+            }
+            
+            if (allChapterData.length === 0) {
+                console.log('[과거 줄거리] 수집할 데이터가 없습니다.');
+                return;
+            }
+            
+            console.log('[과거 줄거리] 수집된 데이터:', allChapterData.length, '개 속성');
+            console.log('[과거 줄거리] 수집된 등장인물:', allCharacters.length, '개');
+            
+            // 등장인물 정보 섹션 생성
+            const charactersSection = allCharacters.length > 0 
+                ? `\n\n**과거 등장인물 정보:**\n${allCharacters.map((char, idx) => `${idx + 1}. ${char}`).join('\n')}`
+                : '';
+            
+            // GPT API를 사용하여 줄거리 요약 생성 (4개 섹션 구조)
+            const summaryPrompt = `다음은 소설 "${novelTitle}"의 챕터 ${nextChapterIndex}까지의 모든 내용입니다. 이를 바탕으로 다음 구조로 작성해주세요:
+
+**챕터별 내용:**
+
+${allChapterData.map((chapterData, idx) => {
+    return `**${chapterData.chapter}**
+${chapterData.data.map((data, i) => `- ${chapterData.attribute}: ${data.substring(0, 500)}${data.length > 500 ? '...' : ''}`).join('\n')}`;
+}).join('\n\n')}${charactersSection}
+
+위 내용을 바탕으로 다음 4개 섹션으로 구성하여 작성해주세요:
+
+**1. 이야기 끝나는 장면**
+- 챕터 ${nextChapterIndex}의 마지막 장면이 어떻게 끝나는지 생생하게 묘사
+- 마지막 대화와 상황, 분위기, 인물들의 행동을 구체적으로 서술
+- 요약이 아닌 장면 묘사로 작성
+- 예시: "주인공이 창밖을 바라보며 말했다. '그렇다면...' 그녀의 목소리는 떨리고 있었다. 손에 쥔 편지는 바람에 날려갔고, 그녀는 그대로 서 있었다."
+
+**2. 주요 대사**
+- 챕터 ${nextChapterIndex}까지의 이야기에서 중요한 대사들을 추출하여 나열
+- 각 대사를 따옴표("")로 표시하고, 누가 말했는지 간단히 설명
+- 예시: 
+"이렇게까지 해야 하는 거냐, 리사?" - 호준의 마지막 말
+"왜 이렇게 해야만 해? 내가 왜 너를…" - 리사의 절규
+
+**3. 과거 줄거리**
+- 챕터 ${nextChapterIndex}까지의 전체 흐름과 주요 사건들을 시간순으로 서술
+- 등장인물들의 주요 대사들을 자연스럽게 포함 (따옴표로 표시)
+- 자연스러운 문체로 작성
+
+**4. 과거 등장인물**
+- 위에 제공된 과거 등장인물 정보를 바탕으로 등장인물 목록 작성
+- 각 등장인물의 특징과 역할을 간단히 설명
+${allCharacters.length > 0 ? `- 제공된 등장인물 정보:\n${allCharacters.map((char, idx) => `  ${idx + 1}. ${char}`).join('\n')}` : '- 등장인물 정보가 없습니다.'}
+
+**작성 형식:**
+위 4개 섹션을 순서대로 작성해주세요. 각 섹션은 명확하게 구분되어야 합니다.`;
+
+            // GPT API 호출
+            const gptUrl = getServerUrl('/api/gpt/chat');
+            const gptResponse = await fetch(gptUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    prompt: summaryPrompt,
+                    model: window.API_CONFIG?.defaultModel || 'gpt-4o-mini',
+                    temperature: 0.7,
+                    maxTokens: 2000,
+                    systemMessage: '당신은 소설 작성을 돕는 AI 어시스턴트입니다. 주어진 내용을 바탕으로 명확하고 간결한 줄거리 요약을 작성해주세요. 특히 등장인물들의 주요 대사들을 자연스럽게 포함하여 작성해야 합니다. 대사는 따옴표로 표시하여 구분하고, 줄거리 흐름에 자연스럽게 녹아들도록 작성해주세요.'
+                }),
+            });
+            
+            if (!gptResponse.ok) {
+                console.warn('[과거 줄거리] GPT API 호출 실패:', gptResponse.status);
+                return;
+            }
+            
+            const gptData = await gptResponse.json();
+            if (!gptData.ok || !gptData.response) {
+                console.warn('[과거 줄거리] GPT 응답 오류:', gptData.error);
+                return;
+            }
+            
+            const summaryText = (gptData.response || '').trim();
+            if (!summaryText) {
+                console.warn('[과거 줄거리] 요약 텍스트가 비어있습니다.');
+                return;
+            }
+            
+            console.log('[과거 줄거리] 요약 생성 완료:', summaryText.length, '자');
+            
+            // BIT 값 계산
+            const attributeBits = calculateBitValues(pastSummaryAttribute);
+            const dataBits = calculateBitValues(summaryText);
+            
+            if (!attributeBits.max || !attributeBits.min || !dataBits.max || !dataBits.min) {
+                console.warn('[과거 줄거리] BIT 값 계산 실패');
+                return;
+            }
+            
+            // 중복 체크
+            const isDuplicate = await checkDuplicate(pastSummaryAttribute, summaryText, attributeBits, dataBits);
+            if (isDuplicate) {
+                console.log('[과거 줄거리] 이미 저장된 요약입니다.');
+                return;
+            }
+            
+            // 데이터 텍스트 필드를 통해 저장 (모든 데이터는 데이터 텍스트 필드를 거쳐야 함)
+            console.log('[과거 줄거리] 데이터 입력 필드를 통해 저장합니다.');
+            
+            // 이전 저장 상태 초기화 (중복 체크 우회)
+            if (typeof lastSavedAttribute !== 'undefined') {
+                lastSavedAttribute = '';
+                lastSavedData = '';
+            }
+            
+            // 소설 제목 입력 필드에 값 설정
+            if ($novelTitleInput) {
+                $novelTitleInput.value = novelTitle;
+                localStorage.setItem(STORAGE_KEY_NOVEL_TITLE, novelTitle);
+            }
+            
+            // 속성 입력 필드에 값 설정
+            if ($attributeInput) {
+                // pastSummaryAttribute에서 소설 제목 제거 (속성 필드에는 소설 제목 제외)
+                const attributePart = pastSummaryAttribute.includes(' → ') 
+                    ? pastSummaryAttribute.split(' → ').slice(1).join(' → ')
+                    : pastSummaryAttribute;
+                $attributeInput.value = attributePart;
+                localStorage.setItem(STORAGE_KEY_ATTRIBUTE_TEXT, attributePart);
+                
+                // 속성 입력 이벤트 트리거
+                const attributeInputEvent = new Event('input', { bubbles: true });
+                $attributeInput.dispatchEvent(attributeInputEvent);
+            }
+            
+            // 데이터 입력 필드에 값 설정
+            if ($dataInput) {
+                $dataInput.value = summaryText;
+                $dataInput.style.height = 'auto';
+                $dataInput.style.height = Math.min($dataInput.scrollHeight, 400) + 'px';
+                
+                // 데이터 입력 이벤트 트리거하여 BIT 값 계산
+                const dataInputEvent = new Event('input', { bubbles: true });
+                $dataInput.dispatchEvent(dataInputEvent);
+                
+                // 로컬 스토리지에도 저장 (autoSave 함수가 정확한 값을 읽을 수 있도록)
+                localStorage.setItem(STORAGE_KEY_DATA_TEXT, summaryText);
+                
+                console.log('[과거 줄거리] 입력 필드 값 설정 완료:', {
+                    novelTitle: $novelTitleInput?.value,
+                    attributeText: $attributeInput?.value,
+                    dataText: $dataInput.value.substring(0, 100) + '...'
+                });
+                
+                // autoSave 함수 호출 (데이터 텍스트 필드를 거쳐 저장)
+                // 충분한 시간을 두고 여러 번 시도 (값이 제대로 반영될 때까지)
+                const attemptSave = () => {
+                    console.log('[과거 줄거리] autoSave 호출 시도');
+                    const currentNovelTitle = $novelTitleInput?.value?.trim() || '';
+                    const currentAttributeText = $attributeInput?.value?.trim() || '';
+                    const currentDataText = $dataInput?.value?.trim() || '';
+                    
+                    console.log('[과거 줄거리] 입력 필드 값 확인:', {
+                        novelTitle: currentNovelTitle,
+                        attributeText: currentAttributeText,
+                        dataText: currentDataText ? currentDataText.substring(0, 100) + '...' : ''
+                    });
+                    
+                    // 값이 모두 채워져 있는지 확인
+                    if (!currentNovelTitle || !currentAttributeText || !currentDataText) {
+                        console.warn('[과거 줄거리] 입력 필드 값이 부족합니다:', {
+                            novelTitle: !!currentNovelTitle,
+                            attributeText: !!currentAttributeText,
+                            dataText: !!currentDataText
+                        });
+                        return false;
+                    }
+                    
+                    // triggerAutoSave 함수 사용 (디바운싱 포함)
+                    if (typeof triggerAutoSave === 'function') {
+                        console.log('[과거 줄거리] triggerAutoSave 호출');
+                        triggerAutoSave();
+                        return true;
+                    } else if (typeof autoSave === 'function') {
+                        console.log('[과거 줄거리] autoSave 직접 호출');
+                        autoSave().catch(err => {
+                            console.error('[과거 줄거리] autoSave 오류:', err);
+                            if (typeof window.addRightLog === 'function') {
+                                window.addRightLog('error', `[과거 줄거리] 저장 오류: ${err.message}`);
+                            }
+                        });
+                        return true;
+                    } else {
+                        console.warn('[과거 줄거리] autoSave 함수를 찾을 수 없습니다.');
+                        return false;
+                    }
+                };
+                
+                // 첫 번째 시도
+                setTimeout(() => {
+                    if (!attemptSave()) {
+                        console.warn('[과거 줄거리] 첫 번째 저장 시도 실패, 재시도 예정');
+                    }
+                }, 1500);
+                
+                // 두 번째 시도 (안전장치)
+                setTimeout(() => {
+                    if (!attemptSave()) {
+                        console.warn('[과거 줄거리] 두 번째 저장 시도 실패');
+                        if (typeof window.addRightLog === 'function') {
+                            window.addRightLog('warn', '[과거 줄거리] 자동 저장 실패. 수동으로 저장 버튼을 눌러주세요.');
+                        }
+                    }
+                }, 3000);
+                
+                console.log('[과거 줄거리] 입력 필드에 값 설정 완료, autoSave 호출 예정');
+                if (typeof window.addRightLog === 'function') {
+                    window.addRightLog('info', `[과거 줄거리] "${pastSummaryAttribute}" 입력 필드에 설정 완료, 자동 저장 시도 중...`);
+                }
+            } else {
+                console.warn('[과거 줄거리] 데이터 입력 필드를 찾을 수 없습니다.');
+            }
+            
+        } catch (error) {
+            console.error('[과거 줄거리] 오류:', error);
+        }
+    }
+    
+    // 현재 챕터의 줄거리 요약 생성 (저장하지 않음)
+    async function generateChapterSummaryWithoutSave(novelTitle, chapters, currentIndex) {
+        try {
+            console.log('[줄거리 요약] 생성 시작:', { novelTitle, currentIndex });
+            
+            // 현재 챕터의 데이터만 수집
+            if (currentIndex < 0 || currentIndex >= chapters.length) {
+                console.warn('[줄거리 요약] 유효하지 않은 챕터 인덱스:', currentIndex);
+                return;
+            }
+            
+            const allChapterData = [];
+            const chapter = chapters[currentIndex];
+            const chapterFullTitle = `챕터 ${chapter.number}: ${chapter.title}`;
+            const chapterPrefix = `${novelTitle} → ${chapterFullTitle}`;
+            
+            // 해당 챕터의 모든 속성 조회
+            try {
+                const url = getServerUrl('/api/attributes/all');
+                const response = await fetch(url);
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.ok && data.attributes) {
+                        // 해당 챕터와 관련된 속성만 필터링
+                        const chapterAttributes = data.attributes.filter(attr => {
+                            const attrText = (attr.text || '').trim();
+                            if (!attrText || !attrText.includes(' → ')) return false;
+                            
+                            const parts = attrText.split(' → ').map(p => p.trim()).filter(Boolean);
+                            if (parts.length < 2) return false;
+                            
+                            const attrNovelTitle = parts[0];
+                            if (attrNovelTitle !== novelTitle) return false;
+                            
+                            const chapterPart = parts[1];
+                            const chapterMatch = chapterPart.match(/챕터\s*(\d+)/i);
+                            if (!chapterMatch || chapterMatch[1] !== chapter.number) return false;
+                            
+                            // "과거 줄거리" 속성은 제외
+                            if (attrText.includes('과거 줄거리')) return false;
+                            
+                            return true;
+                        });
+                        
+                        // 각 속성의 데이터 조회
+                        for (const attr of chapterAttributes) {
+                            try {
+                                const dataUrl = getServerUrl(`/api/attributes/data?bitMax=${attr.bitMax}&bitMin=${attr.bitMin}&limit=1000`);
+                                const dataResponse = await fetch(dataUrl);
+                                
+                                if (dataResponse.ok) {
+                                    const dataData = await dataResponse.json();
+                                    if (dataData.ok && dataData.items && dataData.items.length > 0) {
+                                        const dataTexts = dataData.items.map(item => {
+                                            const text = item.s || item.text || item.data?.text || '';
+                                            return text;
+                                        }).filter(text => text && text.length > 0);
+                                        
+                                        if (dataTexts.length > 0) {
+                                            const attributePart = attr.text.includes(' → ') 
+                                                ? attr.text.split(' → ').slice(2).join(' → ') || attr.text.split(' → ')[1]
+                                                : attr.text;
+                                            
+                                            allChapterData.push({
+                                                chapter: chapterFullTitle,
+                                                attribute: attributePart,
+                                                data: dataTexts
+                                            });
+                                        }
+                                    }
+                                }
+                            } catch (error) {
+                                console.warn('[줄거리 요약] 속성 데이터 조회 오류:', attr.text, error);
+                            }
+                        }
+                    }
+                }
+            } catch (error) {
+                console.warn('[줄거리 요약] 챕터 데이터 조회 오류:', chapterFullTitle, error);
+            }
+            
+            if (allChapterData.length === 0) {
+                console.log('[줄거리 요약] 수집할 데이터가 없습니다.');
+                return;
+            }
+            
+            console.log('[줄거리 요약] 수집된 데이터:', allChapterData.length, '개 속성');
+            
+            // 등장인물 정보 수집
+            const allCharacters = [];
+            try {
+                const url = getServerUrl('/api/attributes/all');
+                const response = await fetch(url);
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.ok && data.attributes) {
+                        // 등장인물 관련 속성 필터링
+                        const characterAttributes = data.attributes.filter(attr => {
+                            const attrText = (attr.text || '').trim();
+                            if (!attrText || !attrText.includes(' → ')) return false;
+                            
+                            const parts = attrText.split(' → ').map(p => p.trim()).filter(Boolean);
+                            if (parts.length < 2) return false;
+                            
+                            const attrNovelTitle = parts[0];
+                            if (attrNovelTitle !== novelTitle) return false;
+                            
+                            // 등장인물 관련 속성 찾기 (챕터 제한 없이)
+                            const lowerAttrText = attrText.toLowerCase();
+                            return lowerAttrText.includes('등장인물') || lowerAttrText.includes('character');
+                        });
+                        
+                        // 각 등장인물 속성의 데이터 조회
+                        for (const attr of characterAttributes) {
+                            try {
+                                const dataUrl = getServerUrl(`/api/attributes/data?bitMax=${attr.bitMax}&bitMin=${attr.bitMin}&limit=1000`);
+                                const dataResponse = await fetch(dataUrl);
+                                
+                                if (dataResponse.ok) {
+                                    const dataData = await dataResponse.json();
+                                    if (dataData.ok && dataData.items && dataData.items.length > 0) {
+                                        const characterTexts = dataData.items.map(item => {
+                                            const text = item.s || item.text || item.data?.text || '';
+                                            return text;
+                                        }).filter(text => text && text.length > 0);
+                                        
+                                        if (characterTexts.length > 0) {
+                                            allCharacters.push(...characterTexts);
+                                        }
+                                    }
+                                }
+                            } catch (error) {
+                                console.warn('[줄거리 요약] 등장인물 데이터 조회 오류:', attr.text, error);
+                            }
+                        }
+                    }
+                }
+            } catch (error) {
+                console.warn('[줄거리 요약] 등장인물 정보 조회 오류:', error);
+            }
+            
+            console.log('[줄거리 요약] 수집된 등장인물:', allCharacters.length, '개');
+            
+            // GPT API를 사용하여 장면 종료와 과거 줄거리 생성
+            const summaryPrompt = `다음은 소설 "${novelTitle}"의 ${chapterFullTitle} 내용입니다. 이를 바탕으로 다음 구조로 작성해주세요:
+
+**챕터 내용:**
+
+${allChapterData.map((chapterData, idx) => {
+    return `**${chapterData.chapter}**
+${chapterData.data.map((data, i) => `- ${chapterData.attribute}: ${data.substring(0, 500)}${data.length > 500 ? '...' : ''}`).join('\n')}`;
+}).join('\n\n')}
+${allCharacters.length > 0 ? `\n\n**과거 등장인물 정보:**\n${allCharacters.map((char, idx) => `${idx + 1}. ${char}`).join('\n')}` : ''}
+
+위 내용을 바탕으로 다음 구조로 작성해주세요:
+
+**1. 이야기 끝나는 장면**
+- 챕터의 마지막 장면이 어떻게 종료되는지 생생하게 묘사
+- 마지막 대화와 상황, 분위기, 인물들의 행동을 구체적으로 서술
+- 요약이 아닌 장면 묘사로 작성
+- 예시: "주인공이 창밖을 바라보며 말했다. '그렇다면...' 그녀의 목소리는 떨리고 있었다. 손에 쥔 편지는 바람에 날려갔고, 그녀는 그대로 서 있었다."
+
+**2. 주요 대사**
+- 챕터에서 등장한 주요 대사들을 발화자와 함께 나열
+- 대사는 따옴표로 표시하고, 발화자를 명시
+- 예시: "호준: '이렇게까지 해야 하는 거냐, 리사?'"
+- 예시: "리사: '호준, 왜 이렇게 해야만 해? 내가 왜 너를…'"
+
+**3. 과거 줄거리**
+- 챕터의 전체 흐름과 주요 사건들을 시간순으로 서술
+- 등장인물들의 주요 대사들을 자연스럽게 포함 (따옴표로 표시)
+- 과거에 일어난 중요한 대사도 포함하여 작성
+- 자연스러운 문체로 작성
+
+**4. 과거 등장인물**
+- 위에 제공된 과거 등장인물 정보를 바탕으로 등장인물 목록 작성
+- 각 등장인물의 특징과 역할을 간단히 설명
+${allCharacters.length > 0 ? `- 제공된 등장인물 정보:\n${allCharacters.map((char, idx) => `  ${idx + 1}. ${char}`).join('\n')}` : '- 등장인물 정보가 없습니다.'}
+
+**작성 형식:**
+위 4개 섹션을 순서대로 작성해주세요. 각 섹션은 명확하게 구분되어야 합니다.`;
+
+            // GPT API 호출
+            const gptUrl = getServerUrl('/api/gpt/chat');
+            const gptResponse = await fetch(gptUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    prompt: summaryPrompt,
+                    model: window.API_CONFIG?.defaultModel || 'gpt-4o-mini',
+                    temperature: 0.7,
+                    maxTokens: 2000,
+                    systemMessage: '당신은 소설 작성을 돕는 AI 어시스턴트입니다. 주어진 내용을 바탕으로 명확하고 간결한 줄거리 요약을 작성해주세요. 특히 등장인물들의 주요 대사들을 자연스럽게 포함하여 작성해야 합니다. 대사는 따옴표로 표시하여 구분하고, 줄거리 흐름에 자연스럽게 녹아들도록 작성해주세요. 이야기 끝나는 장면, 주요 대사, 과거 줄거리, 과거 등장인물 순서로 작성해주세요.'
+                }),
+            });
+            
+            if (!gptResponse.ok) {
+                console.warn('[줄거리 요약] GPT API 호출 실패:', gptResponse.status);
+                return null;
+            }
+            
+            const gptData = await gptResponse.json();
+            if (!gptData.ok || !gptData.response) {
+                console.warn('[줄거리 요약] GPT 응답 오류:', gptData.error);
+                return null;
+            }
+            
+            let summaryText = (gptData.response || '').trim();
+            if (!summaryText) {
+                console.warn('[줄거리 요약] 요약 텍스트가 비어있습니다.');
+                return null;
+            }
+            
+            // GPT 응답에서 실제 장면 묘사만 추출 (설명 부분 제거)
+            summaryText = cleanSummaryText(summaryText);
+            
+            console.log('[줄거리 요약] 요약 생성 완료:', summaryText.length, '자');
+            
+            // 요약 텍스트 반환 (저장하지 않음)
+            return summaryText;
+            
+        } catch (error) {
+            console.error('[줄거리 요약] 오류:', error);
+            return null;
+        }
+    }
+    
+    // GPT 응답에서 실제 장면 묘사만 추출하는 함수
+    function cleanSummaryText(text) {
+        if (!text) return '';
+        
+        // "*" 문자 제거
+        text = text.replace(/\*/g, '');
+        
+        // "// 이렇게 입력되는데", "// 이 부분만 입력되게 해줘" 같은 주석 제거
+        text = text.replace(/\/\/[^\n]*/g, '');
+        
+        // "이렇게 수정해 보았습니다", "이 장면은..." 같은 메타 설명 제거
+        text = text.replace(/이렇게\s+수정해\s+보았습니다[^\n]*/gi, '');
+        text = text.replace(/이\s+장면은[^\n]*/gi, '');
+        text = text.replace(/이렇게\s+입력되는데[^\n]*/gi, '');
+        text = text.replace(/이\s+부분만[^\n]*/gi, '');
+        text = text.replace(/필요한\s+부분이\s+더\s+있다면[^\n]*/gi, '');
+        text = text.replace(/말씀해\s+주세요[^\n]*/gi, '');
+        text = text.replace(/작용할\s+것이다[^\n]*/gi, '');
+        text = text.replace(/요소로\s+작용할[^\n]*/gi, '');
+        text = text.replace(/고민하게\s+만드는[^\n]*/gi, '');
+        text = text.replace(/이어갈지를[^\n]*/gi, '');
+        text = text.replace(/앞으로의\s+여정을[^\n]*/gi, '');
+        text = text.replace(/내면의\s+갈등과[^\n]*/gi, '');
+        text = text.replace(/리사의[^\n]*갈등과[^\n]*/gi, '');
+        text = text.replace(/중요한\s+전환점이\s+된다[^\n]*/gi, '');
+        text = text.replace(/독자에게\s+강한\s+감정적\s+여운을[^\n]*/gi, '');
+        text = text.replace(/이야기의\s+깊이를\s+더하며[^\n]*/gi, '');
+        text = text.replace(/복잡한\s+감정을\s+통해[^\n]*/gi, '');
+        text = text.replace(/호준의\s+마지막\s+순간과[^\n]*/gi, '');
+        
+        // 마크다운 헤더 제거 (##, ###, **1. 챕터 장면 종료** 등)
+        text = text.replace(/^#{1,6}\s+/gm, '');
+        text = text.replace(/\*\*[^\*]+\*\*/g, '');
+        text = text.replace(/\*\*1\.\s*(이야기\s*끝나는\s*장면|챕터\s*장면\s*종료)\*\*/gi, '');
+        text = text.replace(/\*\*2\.\s*(주요\s*대사)\*\*/gi, '');
+        text = text.replace(/\*\*3\.\s*(과거\s*줄거리)\*\*/gi, '');
+        text = text.replace(/\*\*4\.\s*(과거\s*등장인물)\*\*/gi, '');
+        text = text.replace(/\*\*1\.\s*챕터\s*결말\s*부분[^\*]*\*\*/gi, '');
+        
+        // "**작성 형식:**" 같은 설명 제거
+        text = text.replace(/\*\*작성\s*형식[^\*]*\*\*/gi, '');
+        text = text.replace(/먼저\s*"[^"]*"\s*섹션을[^\n]*/gi, '');
+        text = text.replace(/그\s+다음\s*"[^"]*"\s*섹션을[^\n]*/gi, '');
+        text = text.replace(/작성하고[^\n]*/gi, '');
+        text = text.replace(/작성해주세요[^\n]*/gi, '');
+        
+        // 빈 줄 정리 (3개 이상 연속된 빈 줄은 2개로)
+        text = text.replace(/\n{3,}/g, '\n\n');
+        
+        // 앞뒤 공백 제거
+        text = text.trim();
+        
+        // "리사는 호준의 숨통을 끊으려 단검을 찔렀다" 같은 실제 장면 시작 부분 찾기
+        // 만약 설명이 앞에 있으면 실제 장면 부분만 추출
+        const sceneStartPatterns = [
+            /리사는\s+호준의\s+숨통을/,
+            /리사는\s+그의\s+품에서/,
+            /호준은\s+약간\s+웃으며/,
+            /그때[,\s]+리사의/,
+            /"일로와\."/,
+            /"새끼들/,
+            /리사와\s+앨프\s+가드는/
+        ];
+        
+        let sceneStartIndex = -1;
+        for (const pattern of sceneStartPatterns) {
+            const match = text.search(pattern);
+            if (match !== -1) {
+                sceneStartIndex = match;
+                break;
+            }
+        }
+        
+        // 실제 장면이 시작되는 부분부터 추출
+        if (sceneStartIndex !== -1) {
+            text = text.substring(sceneStartIndex);
+        }
+        
+        // 끝 부분의 설명 제거 (예: "이 장면은...", "이렇게 수정해 보았습니다...")
+        const endPatterns = [
+            /이\s+장면은.*$/s,
+            /이렇게\s+수정해.*$/s,
+            /필요한\s+부분이.*$/s,
+            /작용할\s+것이다.*$/s,
+            /요소로\s+작용할.*$/s
+        ];
+        
+        for (const pattern of endPatterns) {
+            text = text.replace(pattern, '').trim();
+        }
+        
+        return text.trim();
+    }
+    
+    // 챕터의 모든 속성과 데이터를 대화 상자에 추가하는 함수
+    async function appendChapterAllDataToChatInput(novelTitle, chapterFullTitle, chapterNum) {
+        const chapterPrefix = `${novelTitle} → ${chapterFullTitle}`;
+        
+        try {
+            // 모든 속성 조회
+            const url = getServerUrl('/api/attributes/all');
+            const response = await fetch(url);
+            
+            if (!response.ok) {
+                console.warn('[챕터 데이터] 속성 조회 실패');
+                appendToChatInput(chapterPrefix);
+                return;
+            }
+            
+            const data = await response.json();
+            if (!data.ok || !data.attributes) {
+                console.warn('[챕터 데이터] 속성 데이터 없음');
+                appendToChatInput(chapterPrefix);
+                return;
+            }
+            
+            // 해당 챕터와 관련된 속성만 필터링
+            const chapterAttributes = data.attributes.filter(attr => {
+                const attrText = (attr.text || '').trim();
+                if (!attrText || !attrText.includes(' → ')) return false;
+                
+                const parts = attrText.split(' → ').map(p => p.trim()).filter(Boolean);
+                if (parts.length < 2) return false;
+                
+                const attrNovelTitle = parts[0];
+                if (attrNovelTitle !== novelTitle) return false;
+                
+                const chapterPart = parts[1];
+                const chapterMatch = chapterPart.match(/챕터\s*(\d+)/i);
+                if (!chapterMatch || chapterMatch[1] !== chapterNum) return false;
+                
+                return true;
+            });
+            
+            console.log('[챕터 데이터] 관련 속성 수:', chapterAttributes.length);
+            
+            // 각 속성의 데이터 조회 및 수집
+            const allDataForGPT = []; // GPT에 전달할 전체 데이터
+            const chatTextParts = []; // 대화 입력창에 표시할 텍스트 (크기만)
+            
+            for (const attr of chapterAttributes) {
+                try {
+                    const dataUrl = getServerUrl(`/api/attributes/data?bitMax=${attr.bitMax}&bitMin=${attr.bitMin}&limit=1000`);
+                    const dataResponse = await fetch(dataUrl);
+                    
+                    if (dataResponse.ok) {
+                        const dataData = await dataResponse.json();
+                        if (dataData.ok && dataData.items && dataData.items.length > 0) {
+                            const attrText = attr.text || '';
+                            const attributePart = attrText.includes(' → ') 
+                                ? attrText.split(' → ').slice(2).join(' → ') || attrText.split(' → ')[1]
+                                : attrText;
+                            
+                            // 데이터 텍스트 추출
+                            const dataTexts = dataData.items.map(item => {
+                                const text = item.s || item.text || item.data?.text || '';
+                                return text;
+                            }).filter(text => text && text.length > 0);
+                            
+                            if (dataTexts.length > 0) {
+                                // GPT에 전달할 전체 데이터
+                                allDataForGPT.push({
+                                    attribute: attributePart,
+                                    fullAttribute: attrText,
+                                    data: dataTexts
+                                });
+                                
+                                // 대화 입력창에는 크기만 표시
+                                const totalSize = dataTexts.reduce((sum, text) => sum + text.length, 0);
+                                chatTextParts.push(`- ${attributePart}: 데이터 ${dataTexts.length}개 (${totalSize.toLocaleString()}자)`);
+                            }
+                        }
+                    }
+                } catch (error) {
+                    console.warn('[챕터 데이터] 속성 데이터 조회 오류:', attr.text, error);
+                }
+            }
+            
+            // GPT에 전달할 데이터를 전역 변수에 저장
+            if (typeof window !== 'undefined') {
+                window.chapterDataForGPT = {
+                    chapterTitle: chapterFullTitle,
+                    novelTitle: novelTitle,
+                    attributes: allDataForGPT
+                };
+                console.log('[챕터 데이터] GPT 전달 데이터 저장:', {
+                    chapterTitle: chapterFullTitle,
+                    attributeCount: allDataForGPT.length,
+                    totalDataCount: allDataForGPT.reduce((sum, attr) => sum + attr.data.length, 0)
+                });
+            }
+            
+            // 대화 입력창에 추가 (크기만 표시)
+            let chatText = `${chapterPrefix}\n\n**챕터 데이터 요약:**\n${chatTextParts.join('\n')}`;
+            if (chatTextParts.length === 0) {
+                chatText = chapterPrefix;
+            }
+            
+            appendToChatInput(chatText);
+            
+        } catch (error) {
+            console.error('[챕터 데이터] 오류:', error);
+            appendToChatInput(chapterPrefix);
         }
     };
     

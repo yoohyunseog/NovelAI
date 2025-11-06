@@ -10,13 +10,14 @@
 <body>
     <div class="app-wrapper">
         <!-- 로그 컨테이너 -->
-        <div class="log-container-wrapper">
+        <div class="log-container-wrapper" id="topLogWrapper">
             <div class="log-header">
                 <span class="log-title">📋 로그</span>
                 <button id="toggleLogBtn" class="log-toggle-btn">▼</button>
                 <button id="clearLogBtn" class="log-clear-btn">🧹 지우기</button>
             </div>
             <div id="logContainer" class="log-container"></div>
+            <div class="log-resize-handle" id="topLogResizeHandle"></div>
         </div>
 
         <!-- 상단 헤더 -->
@@ -190,13 +191,29 @@
         </div>
         
         <!-- 하단 로그 컨테이너 -->
-        <div class="bottom-log-container-wrapper">
+        <div class="bottom-log-container-wrapper" id="bottomLogWrapper">
+            <div class="bottom-log-resize-handle" id="bottomLogResizeHandle"></div>
             <div class="bottom-log-header">
                 <span class="bottom-log-title">📋 하단 로그</span>
                 <button id="toggleBottomLogBtn" class="bottom-log-toggle-btn">▼</button>
                 <button id="clearBottomLogBtn" class="bottom-log-clear-btn">🧹 지우기</button>
             </div>
-            <div id="bottomLogContainer" class="bottom-log-container"></div>
+            <div class="bottom-log-split-container">
+                <div class="bottom-log-left-section">
+                    <div class="bottom-log-section-header">
+                        <span class="bottom-log-section-title">좌측 로그</span>
+                        <button id="clearLeftLogBtn" class="bottom-log-clear-btn">🧹</button>
+                    </div>
+                    <div id="bottomLogLeftContainer" class="bottom-log-container"></div>
+                </div>
+                <div class="bottom-log-right-section">
+                    <div class="bottom-log-section-header">
+                        <span class="bottom-log-section-title">우측 로그</span>
+                        <button id="clearRightLogBtn" class="bottom-log-clear-btn">🧹</button>
+                    </div>
+                    <div id="bottomLogRightContainer" class="bottom-log-container"></div>
+                </div>
+            </div>
         </div>
     </div>
 

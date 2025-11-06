@@ -1667,6 +1667,7 @@ ${JSON.stringify(novelInfo, null, 2)}${nbDataContext}
             position: sticky;
             top: 0;
             z-index: 100;
+            margin-top: 0;
             margin-bottom: 10px;
             padding: 8px 12px;
             background: rgba(0, 0, 0, 0.85);
@@ -1786,10 +1787,10 @@ ${JSON.stringify(novelInfo, null, 2)}${nbDataContext}
     }
 
     // 메시지 추가 (선택지 버튼 포함 + BIT 값 표시)
-    function appendMessage(role, text, skipArray = false) {
+    function appendMessage(role, text, skipArray = false, aiType = 'gpt') {
         if (!$mainContent) return;
 
-        addLog('info', `[메시지 추가] ${role}: ${text.substring(0, 50)}${text.length > 50 ? '...' : ''}${skipArray ? ' (배열 스킵)' : ''}`);
+        addLog('info', `[메시지 추가] ${role}: ${text.substring(0, 50)}${text.length > 50 ? '...' : ''}${skipArray ? ' (배열 스킵)' : ''} (AI 타입: ${aiType})`);
 
         // 환영 메시지 제거
         const welcomeMsg = $mainContent.querySelector('.welcome-message');
@@ -1820,10 +1821,16 @@ ${JSON.stringify(novelInfo, null, 2)}${nbDataContext}
         const messageDiv = document.createElement('div');
         messageDiv.className = `message ${role}`;
 
-        // 아바타
+        // 아바타 (N/B AI인 경우 'N/B'로 표시, GPT AI인 경우 'AI'로 표시)
         const avatar = document.createElement('div');
         avatar.className = 'message-avatar';
-        avatar.textContent = role === 'user' ? 'U' : 'AI';
+        if (role === 'user') {
+            avatar.textContent = 'U';
+        } else if (aiType === 'nb' || aiType === 'N/B') {
+            avatar.textContent = 'N/B';
+        } else {
+            avatar.textContent = 'AI';
+        }
 
         // 메시지 컨텐츠
         const contentDiv = document.createElement('div');
@@ -1970,6 +1977,9 @@ ${JSON.stringify(novelInfo, null, 2)}${nbDataContext}
             addLog('info', '[메시지 추가] 스크롤 이동 완료');
         }, 100);
     }
+    
+    // appendMessage를 전역으로 노출 (다른 스크립트에서 사용할 수 있도록)
+    window.appendMessage = appendMessage;
 
     // 마크다운 문자 제거 (novel_composition_new5.html에서 가져옴)
     function removeMarkdownChars(input) {
@@ -2039,13 +2049,41 @@ ${JSON.stringify(novelInfo, null, 2)}${nbDataContext}
         return responseText;
     }
     
+    // 메시지 전송 중 상태 추적 (중복 전송 방지)
+    let isMessageSending = false;
+    
+    // N/B AI 응답 중 상태 추적 (N/B AI 응답 중일 때는 GPT AI 응답하지 않음)
+    let isNBAIResponding = false;
+    
+    // N/B AI 응답 상태를 전역으로 노출 (다른 스크립트에서 설정 가능하도록)
+    window.setNBAIResponding = function(value) {
+        isNBAIResponding = value;
+        addLog('info', `[N/B AI 상태] ${value ? '응답 중' : '응답 완료'}`);
+    };
+
     // 메시지 전송 (단계별 흐름)
-    async function sendMessage() {
+    // 전역으로 노출 (다른 스크립트에서 호출 가능하도록)
+    window.sendMessage = async function sendMessage() {
+        // 중복 전송 방지
+        if (isMessageSending) {
+            addLog('warn', '[메시지 전송] 이미 전송 중입니다. 잠시 후 다시 시도해주세요.');
+            return;
+        }
+        
+        // N/B AI 응답 중일 때는 GPT AI 응답하지 않음
+        if (isNBAIResponding) {
+            addLog('warn', '[메시지 전송] N/B AI가 응답 중입니다. N/B AI 응답이 완료된 후 다시 시도해주세요.');
+            return;
+        }
+
         const text = ($chatInput && $chatInput.value || '').trim();
         if (!text) {
             addLog('warn', '[메시지 전송] 빈 메시지');
             return;
         }
+
+        // 전송 중 상태로 설정
+        isMessageSending = true;
 
         addLog('info', `[메시지 전송] 시작: "${text.substring(0, 50)}${text.length > 50 ? '...' : ''}"`);
 
@@ -2059,15 +2097,53 @@ ${JSON.stringify(novelInfo, null, 2)}${nbDataContext}
 
         appendMessage('user', text);
         
+        // 입력창 비활성화 및 초기화
         if ($chatInput) {
             $chatInput.value = '';
             $chatInput.style.height = 'auto';
-            addLog('info', '[메시지 전송] 입력창 초기화');
+            $chatInput.disabled = true;
+            $chatInput.placeholder = 'GPT가 응답 중입니다...';
+            addLog('info', '[메시지 전송] 입력창 비활성화 및 초기화');
         }
 
+        // 전송 버튼 비활성화
         if ($chatSendBtn) {
             $chatSendBtn.disabled = true;
             addLog('info', '[메시지 전송] 전송 버튼 비활성화');
+        }
+
+        // 로딩 메시지 추가
+        let loadingMessageId = null;
+        if ($mainContent) {
+            const loadingDiv = document.createElement('div');
+            loadingMessageId = 'loading_' + Date.now();
+            loadingDiv.id = loadingMessageId;
+            loadingDiv.className = 'message assistant loading-message';
+            
+            const avatar = document.createElement('div');
+            avatar.className = 'message-avatar';
+            avatar.textContent = 'AI';
+            
+            const contentDiv = document.createElement('div');
+            contentDiv.className = 'message-content';
+            
+            const bubble = document.createElement('div');
+            bubble.className = 'message-bubble';
+            bubble.style.cssText = 'opacity: 0.7;';
+            
+            const textDiv = document.createElement('div');
+            textDiv.className = 'message-text';
+            textDiv.innerHTML = '<div style="display: flex; align-items: center; gap: 10px;"><span class="loading-spinner"></span><span>GPT가 응답을 생성하고 있습니다...</span></div>';
+            
+            bubble.appendChild(textDiv);
+            contentDiv.appendChild(bubble);
+            loadingDiv.appendChild(avatar);
+            loadingDiv.appendChild(contentDiv);
+            $mainContent.appendChild(loadingDiv);
+            
+            // 스크롤을 맨 아래로
+            $mainContent.scrollTop = $mainContent.scrollHeight;
+            addLog('info', '[메시지 전송] 로딩 메시지 표시');
         }
 
         const model = ($chatModel && $chatModel.value) || (window.API_CONFIG?.defaultModel || 'gpt-4o');
@@ -2187,7 +2263,26 @@ ${JSON.stringify(novelInfo, null, 2)}${nbDataContext}
                     : '');
             
             // 참조 데이터 포맷팅
-            const formattedReferenceData = referenceData || '';
+            let formattedReferenceData = referenceData || '';
+            
+            // 챕터 데이터가 있으면 추가 (window.chapterDataForGPT)
+            if (typeof window !== 'undefined' && window.chapterDataForGPT) {
+                const chapterData = window.chapterDataForGPT;
+                let chapterDataText = `\n\n**챕터 데이터 (${chapterData.chapterTitle}):**\n`;
+                
+                for (const attrData of chapterData.attributes) {
+                    chapterDataText += `\n**속성: ${attrData.attribute}**\n`;
+                    for (let i = 0; i < attrData.data.length; i++) {
+                        chapterDataText += `${i + 1}. ${attrData.data[i]}\n`;
+                    }
+                    chapterDataText += '\n';
+                }
+                
+                formattedReferenceData += chapterDataText;
+                
+                // 사용 후 초기화 (한 번만 사용)
+                window.chapterDataForGPT = null;
+            }
             
             // Novel AI 상태 정보 가져오기
             const novelAIStatus = getNovelAIStatus();
@@ -2242,6 +2337,15 @@ ${JSON.stringify(novelInfo, null, 2)}${nbDataContext}
                 }
             }
             
+            // 로딩 메시지 제거
+            if (loadingMessageId && $mainContent) {
+                const loadingMsg = document.getElementById(loadingMessageId);
+                if (loadingMsg) {
+                    loadingMsg.remove();
+                    addLog('info', '[메시지 전송] 로딩 메시지 제거');
+                }
+            }
+
             // 속성 정보를 포함하여 메시지 표시
             let displayResponse = normalizedResponse;
             if (extractedAttributes && extractedAttributes.length > 0) {
@@ -2276,7 +2380,6 @@ ${JSON.stringify(novelInfo, null, 2)}${nbDataContext}
             const dataBits = calculateBitValues(responseData);
             
             // 마지막 메시지의 BIT 값 밑에 속성 정보 추가
-            const $mainContent = document.getElementById('mainContent');
             if ($mainContent && fullAttributeText) {
                 const lastMessage = $mainContent.querySelector('.message.assistant:last-child');
                 if (lastMessage) {
@@ -2339,6 +2442,15 @@ ${JSON.stringify(novelInfo, null, 2)}${nbDataContext}
                 }
             }
         } catch (error) {
+            // 로딩 메시지 제거
+            if (loadingMessageId && $mainContent) {
+                const loadingMsg = document.getElementById(loadingMessageId);
+                if (loadingMsg) {
+                    loadingMsg.remove();
+                    addLog('info', '[메시지 전송] 로딩 메시지 제거 (오류 발생)');
+                }
+            }
+
             addLog('error', `[메시지 전송] 오류: ${error.message || error}`);
             console.error('메시지 전송 오류:', error);
             const errorMsg = error.message || '오류가 발생했습니다.';
@@ -2350,6 +2462,18 @@ ${JSON.stringify(novelInfo, null, 2)}${nbDataContext}
                 appendMessage('assistant', `❌ 오류: ${errorMsg}\n\n서버 연결을 확인하고 다시 시도해주세요.`);
             }
         } finally {
+            // 전송 중 상태 해제
+            isMessageSending = false;
+
+            // 입력창 활성화
+            if ($chatInput) {
+                $chatInput.disabled = false;
+                $chatInput.placeholder = '소설 구성 목록을 작성하세요... 예: 소설 제목: 미드 라이너는 황무지에 있다, 챕터 1: 제1장 (장면: 코어 점화, 주인공 등장) (Shift+Enter 줄바꿈)';
+                $chatInput.focus();
+                addLog('info', '[메시지 전송] 입력창 활성화');
+            }
+
+            // 전송 버튼 활성화
             if ($chatSendBtn) {
                 $chatSendBtn.disabled = false;
                 addLog('info', '[메시지 전송] 전송 버튼 활성화');
@@ -2360,6 +2484,11 @@ ${JSON.stringify(novelInfo, null, 2)}${nbDataContext}
     // 이벤트 리스너
     if ($chatSendBtn) {
         $chatSendBtn.addEventListener('click', () => {
+            // 전송 중이면 무시
+            if (isMessageSending) {
+                addLog('warn', '[이벤트] 전송 버튼 클릭 무시 (전송 중)');
+                return;
+            }
             addLog('info', '[이벤트] 전송 버튼 클릭');
             sendMessage();
         });
@@ -2368,6 +2497,12 @@ ${JSON.stringify(novelInfo, null, 2)}${nbDataContext}
     if ($chatInput) {
         $chatInput.addEventListener('keydown', (e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
+                // 입력창이 비활성화되어 있거나 전송 중이면 전송하지 않음
+                if ($chatInput.disabled || isMessageSending) {
+                    e.preventDefault();
+                    addLog('warn', '[이벤트] Enter 키 입력 무시 (전송 중)');
+                    return;
+                }
                 addLog('info', '[이벤트] Enter 키 입력 (전송)');
                 e.preventDefault();
                 sendMessage();
@@ -2694,7 +2829,8 @@ ${JSON.stringify(novelInfo, null, 2)}${nbDataContext}
     const $logContainer = document.getElementById('logContainer');
     const $toggleLogBtn = document.getElementById('toggleLogBtn');
     const $clearLogBtn = document.getElementById('clearLogBtn');
-    const $logWrapper = document.querySelector('.log-container-wrapper');
+    const $logWrapper = document.getElementById('topLogWrapper') || document.querySelector('.log-container-wrapper');
+    const $topLogResizeHandle = document.getElementById('topLogResizeHandle');
     const MAX_LOG_ENTRIES = 50;
 
     function addLog(type, ...args) {
@@ -2845,10 +2981,30 @@ ${JSON.stringify(novelInfo, null, 2)}${nbDataContext}
     };
 
     // 로그 토글
+    // 상단 로그 높이 저장 함수
+    const saveTopLogHeight = () => {
+        if ($logWrapper && !$logWrapper.classList.contains('collapsed')) {
+            localStorage.setItem('topLogHeight', $logWrapper.offsetHeight.toString());
+        }
+    };
+    
     if ($toggleLogBtn && $logWrapper) {
         $toggleLogBtn.addEventListener('click', () => {
             $logWrapper.classList.toggle('collapsed');
             $toggleLogBtn.textContent = $logWrapper.classList.contains('collapsed') ? '▼' : '▲';
+            // 닫힐 때 높이 저장
+            if (!$logWrapper.classList.contains('collapsed')) {
+                // 저장된 높이 불러오기
+                const savedTopHeight = localStorage.getItem('topLogHeight');
+                if (savedTopHeight) {
+                    const height = parseInt(savedTopHeight, 10);
+                    if (height >= 40 && height <= window.innerHeight * 0.8) {
+                        $logWrapper.style.height = height + 'px';
+                    }
+                }
+            } else {
+                saveTopLogHeight();
+            }
         });
     }
 
@@ -2861,18 +3017,62 @@ ${JSON.stringify(novelInfo, null, 2)}${nbDataContext}
             }
         });
     }
+    
+    // 상단 로그 높이 저장 및 불러오기
+    const TOP_LOG_HEIGHT_KEY = 'topLogHeight';
+    if ($logWrapper) {
+        // 저장된 높이 불러오기
+        const savedTopHeight = localStorage.getItem(TOP_LOG_HEIGHT_KEY);
+        if (savedTopHeight && !$logWrapper.classList.contains('collapsed')) {
+            const height = parseInt(savedTopHeight, 10);
+            if (height >= 40 && height <= window.innerHeight * 0.8) {
+                $logWrapper.style.height = height + 'px';
+            }
+        }
+        
+        // 상단 로그 리사이즈 핸들
+        if ($topLogResizeHandle && $logWrapper) {
+            let isResizing = false;
+            
+            $topLogResizeHandle.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                isResizing = true;
+                const startY = e.clientY;
+                const startHeight = $logWrapper.offsetHeight;
+                
+                const doResize = (e) => {
+                    if (!isResizing) return;
+                    const deltaY = e.clientY - startY;
+                    const newHeight = Math.max(40, Math.min(window.innerHeight * 0.8, startHeight + deltaY));
+                    $logWrapper.style.height = newHeight + 'px';
+                };
+                
+                const stopResize = () => {
+                    isResizing = false;
+                    saveTopLogHeight();
+                    document.removeEventListener('mousemove', doResize);
+                    document.removeEventListener('mouseup', stopResize);
+                };
+                
+                document.addEventListener('mousemove', doResize);
+                document.addEventListener('mouseup', stopResize);
+            });
+        }
+    }
 
     // 하단 로그 시스템
-    const $bottomLogContainer = document.getElementById('bottomLogContainer');
+    const $bottomLogLeftContainer = document.getElementById('bottomLogLeftContainer');
+    const $bottomLogRightContainer = document.getElementById('bottomLogRightContainer');
     const $toggleBottomLogBtn = document.getElementById('toggleBottomLogBtn');
     const $clearBottomLogBtn = document.getElementById('clearBottomLogBtn');
-    const $bottomLogWrapper = document.querySelector('.bottom-log-container-wrapper');
+    const $clearLeftLogBtn = document.getElementById('clearLeftLogBtn');
+    const $clearRightLogBtn = document.getElementById('clearRightLogBtn');
+    const $bottomLogWrapper = document.getElementById('bottomLogWrapper') || document.querySelector('.bottom-log-container-wrapper');
+    const $bottomLogResizeHandle = document.getElementById('bottomLogResizeHandle');
     const MAX_BOTTOM_LOG_ENTRIES = 50;
 
-    // 하단 로그 함수
-    function addBottomLog(type, ...args) {
-        if (!$bottomLogContainer) return;
-        
+    // 하단 로그 함수 (공통 함수)
+    function createBottomLogEntry(type, ...args) {
         const ts = new Date().toLocaleTimeString();
         const full = args.map(a => {
             try {
@@ -2934,14 +3134,21 @@ ${JSON.stringify(novelInfo, null, 2)}${nbDataContext}
             });
         });
 
-        const first = $bottomLogContainer.firstChild;
+        return entry;
+    }
+
+    // 로그를 컨테이너에 추가하는 함수
+    function addLogToContainer($container, entry) {
+        if (!$container) return;
+
+        const first = $container.firstChild;
         if (first) {
-            $bottomLogContainer.insertBefore(entry, first);
+            $container.insertBefore(entry, first);
         } else {
-            $bottomLogContainer.appendChild(entry);
+            $container.appendChild(entry);
         }
 
-        const all = $bottomLogContainer.querySelectorAll('.bottom-log-entry');
+        const all = $container.querySelectorAll('.bottom-log-entry');
         if (all.length > MAX_BOTTOM_LOG_ENTRIES) {
             const oldest = all[all.length - 1];
             if (oldest && oldest.parentNode) {
@@ -2950,24 +3157,111 @@ ${JSON.stringify(novelInfo, null, 2)}${nbDataContext}
         }
     }
 
-    // 전역으로 노출 (좌측/우측 로그 모두 하단 로그로 통합)
-    window.addLeftLog = addBottomLog;
-    window.addRightLog = addBottomLog;
+    // 좌측 로그 함수
+    function addLeftBottomLog(type, ...args) {
+        const entry = createBottomLogEntry(type, ...args);
+        addLogToContainer($bottomLogLeftContainer, entry);
+    }
 
+    // 우측 로그 함수
+    function addRightBottomLog(type, ...args) {
+        const entry = createBottomLogEntry(type, ...args);
+        addLogToContainer($bottomLogRightContainer, entry);
+    }
+
+    // 전역으로 노출
+    window.addLeftLog = addLeftBottomLog;
+    window.addRightLog = addRightBottomLog;
+
+    // 하단 로그 높이 저장 함수
+    const saveBottomLogHeight = () => {
+        if ($bottomLogWrapper && !$bottomLogWrapper.classList.contains('collapsed')) {
+            localStorage.setItem('bottomLogHeight', $bottomLogWrapper.offsetHeight.toString());
+        }
+    };
+    
     // 하단 로그 토글
     if ($toggleBottomLogBtn && $bottomLogWrapper) {
         $toggleBottomLogBtn.addEventListener('click', () => {
             $bottomLogWrapper.classList.toggle('collapsed');
             $toggleBottomLogBtn.textContent = $bottomLogWrapper.classList.contains('collapsed') ? '▼' : '▲';
+            if (!$bottomLogWrapper.classList.contains('collapsed')) {
+                // 저장된 높이 불러오기
+                const savedBottomHeight = localStorage.getItem('bottomLogHeight');
+                if (savedBottomHeight) {
+                    const height = parseInt(savedBottomHeight, 10);
+                    if (height >= 40 && height <= window.innerHeight * 0.8) {
+                        $bottomLogWrapper.style.height = height + 'px';
+                    }
+                }
+            } else {
+                saveBottomLogHeight();
+            }
+        });
+    }
+    
+    // 하단 로그 높이 저장 및 불러오기
+    if ($bottomLogWrapper) {
+        // 저장된 높이 불러오기
+        const savedBottomHeight = localStorage.getItem('bottomLogHeight');
+        if (savedBottomHeight && !$bottomLogWrapper.classList.contains('collapsed')) {
+            const height = parseInt(savedBottomHeight, 10);
+            if (height >= 40 && height <= window.innerHeight * 0.8) {
+                $bottomLogWrapper.style.height = height + 'px';
+            }
+        }
+        
+        // 하단 로그 리사이즈 핸들
+        if ($bottomLogResizeHandle && $bottomLogWrapper) {
+            let isResizing = false;
+            
+            $bottomLogResizeHandle.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                isResizing = true;
+                const startY = e.clientY;
+                const startHeight = $bottomLogWrapper.offsetHeight;
+                
+                const doResize = (e) => {
+                    if (!isResizing) return;
+                    const deltaY = startY - e.clientY; // 하단은 반대 방향
+                    const newHeight = Math.max(40, Math.min(window.innerHeight * 0.8, startHeight + deltaY));
+                    $bottomLogWrapper.style.height = newHeight + 'px';
+                };
+                
+                const stopResize = () => {
+                    isResizing = false;
+                    saveBottomLogHeight();
+                    document.removeEventListener('mousemove', doResize);
+                    document.removeEventListener('mouseup', stopResize);
+                };
+                
+                document.addEventListener('mousemove', doResize);
+                document.addEventListener('mouseup', stopResize);
+            });
+        }
+    }
+
+    // 하단 로그 지우기 (전체)
+    if ($clearBottomLogBtn) {
+        $clearBottomLogBtn.addEventListener('click', () => {
+            if (confirm('하단 로그를 모두 지우시겠습니까?')) {
+                if ($bottomLogLeftContainer) $bottomLogLeftContainer.innerHTML = '';
+                if ($bottomLogRightContainer) $bottomLogRightContainer.innerHTML = '';
+            }
         });
     }
 
-    // 하단 로그 지우기
-    if ($clearBottomLogBtn && $bottomLogContainer) {
-        $clearBottomLogBtn.addEventListener('click', () => {
-            if (confirm('하단 로그를 모두 지우시겠습니까?')) {
-                $bottomLogContainer.innerHTML = '';
-            }
+    // 좌측 로그 지우기
+    if ($clearLeftLogBtn && $bottomLogLeftContainer) {
+        $clearLeftLogBtn.addEventListener('click', () => {
+            $bottomLogLeftContainer.innerHTML = '';
+        });
+    }
+
+    // 우측 로그 지우기
+    if ($clearRightLogBtn && $bottomLogRightContainer) {
+        $clearRightLogBtn.addEventListener('click', () => {
+            $bottomLogRightContainer.innerHTML = '';
         });
     }
 
