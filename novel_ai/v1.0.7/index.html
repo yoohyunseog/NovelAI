@@ -1,0 +1,1162 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>N/B 소설 관리 시스템 v1.0.7</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css">
+  <link rel="stylesheet" href="assets/css/style.css">
+  <style>
+    :root { color-scheme: dark; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      background: #080b16;
+      color: #f2f4ff;
+      font-family: 'Pretendard', 'Noto Sans KR', sans-serif;
+    }
+    .top-banner {
+      position: sticky;
+      top: 0;
+      z-index: 1000;
+      padding: 1.6rem 2.6rem;
+      background: linear-gradient(135deg, rgba(36, 48, 112, 0.95), rgba(16, 20, 44, 0.98));
+      backdrop-filter: blur(8px);
+      border-bottom: 1px solid rgba(118, 138, 255, 0.25);
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    }
+    @media (max-width: 991.98px) {
+      .top-banner {
+        padding: 1.4rem 1.4rem;
+      }
+    }
+    .top-banner h1 {
+      margin: 0;
+      font-size: 1.9rem;
+      font-weight: 700;
+      color: #f2f4ff;
+      letter-spacing: 0.02em;
+    }
+    .test-wrapper {
+      flex: 1;
+      display: flex;
+      overflow: hidden;
+      position: relative;
+    }
+    .test-sidebar {
+      width: 280px;
+      min-width: 200px;
+      max-width: 50%;
+      background: rgba(12, 18, 38, 0.95);
+      border-right: 1px solid rgba(118, 138, 255, 0.25);
+      padding: 2rem 1.5rem;
+      overflow-y: auto;
+      position: fixed;
+      top: 0;
+      left: 0;
+      height: 100vh;
+      z-index: 100;
+      transition: transform 0.3s ease;
+    }
+    @media (min-width: 992px) {
+      .test-sidebar {
+        padding-top: calc(2rem + 80px);
+      }
+    }
+    @media (max-width: 991.98px) {
+      .test-sidebar {
+        min-width: 180px;
+        max-width: 80%;
+        transform: translateX(-100%);
+      }
+      .test-sidebar.open {
+        transform: translateX(0);
+      }
+    }
+    .test-sidebar h3 {
+      margin: 0 0 1.2rem;
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: #e0e5ff;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+    .test-resizer {
+      position: fixed;
+      top: 0;
+      left: 280px;
+      width: 4px;
+      height: 100vh;
+      background: rgba(118, 138, 255, 0.3);
+      cursor: col-resize;
+      z-index: 101;
+      transition: background 0.2s ease;
+    }
+    @media (min-width: 992px) {
+      .test-resizer {
+        top: 80px;
+        height: calc(100vh - 80px);
+      }
+    }
+    .test-resizer:hover {
+      background: rgba(118, 138, 255, 0.6);
+    }
+    @media (max-width: 991.98px) {
+      .test-resizer {
+        display: none;
+      }
+    }
+    .test-toggle-btn {
+      display: none;
+      position: fixed;
+      top: 1rem;
+      left: 1rem;
+      z-index: 102;
+      background: rgba(118, 138, 255, 0.9);
+      border: 1px solid rgba(118, 138, 255, 0.5);
+      color: #f2f4ff;
+      padding: 0.6rem 1rem;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 0.9rem;
+      font-weight: 600;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+      transition: background 0.2s ease;
+    }
+    .test-toggle-btn:hover {
+      background: rgba(118, 138, 255, 1);
+    }
+    @media (max-width: 991.98px) {
+      .test-toggle-btn {
+        display: block;
+      }
+    }
+    .test-overlay {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.5);
+      z-index: 99;
+    }
+    @media (max-width: 991.98px) {
+      .test-overlay.open {
+        display: block;
+      }
+    }
+    .layout-shell {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      padding: 2.8rem 2.4rem 2.4rem;
+      margin-left: 284px;
+      width: calc(100% - 284px);
+      transition: margin-left 0.2s ease, width 0.2s ease;
+    }
+    @media (max-width: 991.98px) {
+      .layout-shell {
+        padding: 1.8rem 1.2rem 1.5rem;
+        margin-left: 0;
+        width: 100%;
+      }
+    }
+    .pane {
+      display: flex;
+      flex-direction: column;
+      padding: 2.4rem;
+      box-sizing: border-box;
+      min-height: 100%;
+      border-radius: 20px;
+      border: 1px solid rgba(118, 138, 255, 0.22);
+      box-shadow: 0 35px 65px rgba(10, 15, 34, 0.45);
+      position: relative;
+      background: rgba(12, 18, 38, 0.6);
+    }
+    @media (max-width: 991.98px) {
+      .pane {
+        padding: 1.6rem 1.4rem;
+        border-radius: 18px;
+      }
+    }
+    .pane-header {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.55rem;
+      padding: 0.5rem 0.95rem;
+      border-radius: 999px;
+      background: rgba(12, 18, 48, 0.76);
+      border: 1px solid rgba(118, 138, 255, 0.38);
+      font-size: 0.82rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #c9d4ff;
+      margin-bottom: 1.6rem;
+      box-shadow: 0 0 18px rgba(30, 42, 84, 0.25);
+    }
+    .pane-header .bullet {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #9aa8ff, #5f7cff);
+      display: inline-block;
+      box-shadow: 0 0 10px rgba(131, 157, 255, 0.65);
+    }
+    .layout-group {
+      margin-top: 1.6rem;
+      align-items: stretch;
+    }
+    .layout-group .pane {
+      height: auto;
+      min-height: 100%;
+    }
+    .pane-group-title {
+      font-size: 1.1rem;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      color: #e2e6ff;
+      margin-bottom: 1rem;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .pane-group-title::before {
+      content: '';
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #86a4ff, #4c6aff);
+      box-shadow: 0 0 12px rgba(134, 164, 255, 0.55);
+    }
+    .left-pane {
+      background: radial-gradient(circle at top left, rgba(37, 52, 104, 0.55), rgba(12, 15, 32, 0.95));
+    }
+    .right-pane {
+      background: radial-gradient(circle at bottom right, rgba(24, 30, 68, 0.5), rgba(10, 13, 28, 0.95));
+    }
+    @media (max-width: 991.98px) {
+      .left-pane,
+      .right-pane {
+        border-radius: 18px;
+        box-shadow: 0 0 38px rgba(12, 18, 38, 0.45);
+      }
+      .left-pane {
+        margin-bottom: 1.8rem;
+      }
+    }
+    h1, h2 {
+      margin: 0 0 1.8rem;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+    }
+    h1 { font-size: 1.9rem; }
+    h2 { font-size: 1.45rem; }
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 0.7rem;
+      margin-bottom: 1.8rem;
+    }
+    label {
+      font-weight: 600;
+      color: #d3daff;
+      font-size: 0.98rem;
+    }
+    input[type="text"], textarea {
+      background: rgba(23, 30, 58, 0.85);
+      border: 1px solid rgba(118, 138, 255, 0.35);
+      border-radius: 12px;
+      padding: 0.82rem 1rem;
+      color: #f2f4ff;
+      font-size: 1rem;
+      transition: border 0.2s ease, box-shadow 0.2s ease;
+      width: 100%;
+    }
+    textarea {
+      min-height: 220px;
+      resize: vertical;
+    }
+    input:focus,
+    textarea:focus {
+      outline: none;
+      border-color: rgba(150, 170, 255, 0.85);
+      box-shadow: 0 0 0 3px rgba(118, 138, 255, 0.3);
+    }
+    .bit-display {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 1rem;
+      margin-top: 1.4rem;
+    }
+    @media (max-width: 575.98px) {
+      .bit-display {
+        grid-template-columns: 1fr;
+      }
+    }
+    .bit-card {
+      background: rgba(16, 21, 42, 0.82);
+      border: 1px solid rgba(118, 138, 255, 0.28);
+      border-radius: 12px;
+      padding: 1rem 1.1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+    }
+    .bit-card strong {
+      font-size: 0.88rem;
+      text-transform: uppercase;
+      color: #c7cffb;
+      letter-spacing: 0.08em;
+    }
+    .bit-card span {
+      font-family: 'Fira Code', 'Roboto Mono', monospace;
+      font-size: 1rem;
+      color: #9fb2ff;
+    }
+    .api-info {
+      margin-bottom: 1.8rem;
+      padding: 1.1rem 1.25rem;
+      border: 1px solid rgba(118, 138, 255, 0.3);
+      border-radius: 14px;
+      background: rgba(18, 24, 46, 0.78);
+      display: flex;
+      flex-direction: column;
+      gap: 0.65rem;
+    }
+    .api-info strong {
+      font-size: 0.98rem;
+      color: #dce2ff;
+      letter-spacing: 0.06em;
+    }
+    .api-info p {
+      margin: 0;
+      color: #b1bbff;
+      line-height: 1.55;
+      font-size: 0.93rem;
+    }
+    .api-info .api-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.45rem;
+      font-family: 'Fira Code', 'Roboto Mono', monospace;
+      font-size: 0.9rem;
+      color: #8aa4ff;
+      text-decoration: none;
+      padding: 0.55rem 0.75rem;
+      background: rgba(30, 42, 84, 0.65);
+      border-radius: 8px;
+      border: 1px solid rgba(118, 138, 255, 0.35);
+      transition: border 0.2s ease, transform 0.2s ease;
+    }
+    .api-info .api-link:hover {
+      border-color: rgba(150, 170, 255, 0.65);
+      transform: translateY(-1px);
+    }
+    .api-info .api-summary {
+      font-family: 'Fira Code', 'Roboto Mono', monospace;
+      font-size: 0.88rem;
+      color: #9fb2ff;
+      background: rgba(17, 23, 45, 0.75);
+      border-radius: 8px;
+      padding: 0.55rem 0.7rem;
+    }
+    .result-card {
+      background: rgba(15, 22, 43, 0.82);
+      border-radius: 14px;
+      border: 1px solid rgba(118, 138, 255, 0.25);
+      padding: 1.15rem 1.25rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.7rem;
+    }
+    .result-card strong {
+      font-size: 0.95rem;
+      letter-spacing: 0.05em;
+      color: #d5dbff;
+    }
+    .result-body {
+      font-family: 'Fira Code', 'Roboto Mono', monospace;
+      font-size: 0.94rem;
+      color: #eef1ff;
+      white-space: pre-wrap;
+    }
+    .log {
+      margin-top: 1.9rem;
+      background: rgba(13, 19, 38, 0.85);
+      border-radius: 12px;
+      border: 1px solid rgba(118, 138, 255, 0.2);
+      flex: 1;
+      overflow-y: auto;
+      padding: 1.3rem 1.1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.55rem;
+      font-family: 'Fira Code', 'Roboto Mono', monospace;
+      font-size: 0.92rem;
+    }
+    .log-entry {
+      border-left: 4px solid rgba(80, 120, 255, 0.45);
+      padding-left: 0.8rem;
+      color: #d7dcff;
+    }
+    .log-entry.success { border-color: rgba(105, 220, 150, 0.8); color: #b8ffd7; }
+    .log-entry.warn { border-color: rgba(255, 200, 120, 0.82); color: #ffe5be; }
+    .log-entry.error { border-color: rgba(255, 92, 92, 0.84); color: #ffc1c1; }
+    .action-controls {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1.5rem;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+    }
+    .action-controls .hint {
+      color: #9aa4d9;
+      font-size: 0.88rem;
+      flex: 1;
+      min-width: 200px;
+    }
+    .action-controls button {
+      background: rgba(118, 138, 255, 0.2);
+      border: 1px solid rgba(118, 138, 255, 0.4);
+      color: #d3daff;
+      padding: 0.6rem 1.2rem;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    .action-controls button:hover {
+      background: rgba(118, 138, 255, 0.3);
+      border-color: rgba(118, 138, 255, 0.6);
+    }
+    .data-columns {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 1.4rem;
+      margin-bottom: 1.8rem;
+    }
+    @media (max-width: 575.98px) {
+      .data-columns {
+        grid-template-columns: 1fr;
+      }
+    }
+    .data-column h3 {
+      margin: 0 0 0.8rem;
+      font-size: 1.05rem;
+      font-weight: 600;
+      color: #dce1ff;
+    }
+    .data-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.9rem;
+      max-height: 320px;
+      overflow-y: auto;
+      margin-bottom: 1.8rem;
+    }
+    .column-log {
+      margin-top: 1rem;
+      background: rgba(18, 23, 44, 0.82);
+      border: 1px solid rgba(118, 138, 255, 0.2);
+      border-radius: 12px;
+      padding: 0.9rem 1rem;
+      font-family: 'Fira Code', 'Roboto Mono', monospace;
+      font-size: 0.86rem;
+      color: #c7cffb;
+      max-height: 120px;
+      overflow-y: auto;
+    }
+    .column-folders {
+      margin-top: 1.2rem;
+      background: rgba(16, 22, 40, 0.78);
+      border: 1px solid rgba(118, 138, 255, 0.2);
+      border-radius: 12px;
+      padding: 1rem 1.1rem;
+    }
+    .column-folders h4 {
+      margin: 0 0 0.6rem;
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: #d0d7ff;
+    }
+    .folder-list {
+      font-family: 'Fira Code', 'Roboto Mono', monospace;
+      font-size: 0.84rem;
+      color: #aab5f0;
+      max-height: 160px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+    }
+    .folder-list .folder-item {
+      line-height: 1.45;
+      word-break: break-all;
+      background: rgba(20, 27, 54, 0.7);
+      border: 1px solid rgba(118, 138, 255, 0.18);
+      border-radius: 10px;
+      padding: 0.65rem 0.75rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+    }
+    .folder-list .folder-item .label {
+      color: #d5dbff;
+      font-weight: 600;
+      font-size: 0.86rem;
+    }
+    .folder-list .folder-item .meta {
+      color: #8e99d9;
+      font-size: 0.8rem;
+    }
+    .tree-view {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+    .tree-item {
+      padding: 0.8rem 1rem;
+      color: #b7c1ff;
+      cursor: pointer;
+      border-radius: 8px;
+      border: 1px solid rgba(118, 138, 255, 0.2);
+      transition: all 0.2s ease;
+    }
+    .tree-item:hover {
+      background: rgba(118, 138, 255, 0.15);
+      border-color: rgba(118, 138, 255, 0.4);
+      transform: translateX(4px);
+    }
+    .tree-item.active {
+      background: rgba(118, 138, 255, 0.25);
+      border-left: 3px solid rgba(118, 138, 255, 0.8);
+      font-weight: 600;
+    }
+    .log-container {
+      height: calc(100% - 40px);
+      overflow-y: auto;
+      font-family: 'Fira Code', 'Roboto Mono', monospace;
+      font-size: 0.85rem;
+    }
+    .log-entry {
+      padding: 0.4rem 0.6rem;
+      margin-bottom: 0.3rem;
+      border-left: 3px solid rgba(118, 138, 255, 0.4);
+      color: #c3ccff;
+    }
+    .log-entry.success {
+      border-color: rgba(105, 220, 150, 0.8);
+      color: #b8ffd7;
+    }
+    .log-entry.error {
+      border-color: rgba(255, 92, 92, 0.84);
+      color: #ffc1c1;
+    }
+    .log-entry.info {
+      border-color: rgba(118, 138, 255, 0.6);
+      color: #c9d4ff;
+    }
+    .btn {
+      border-radius: 8px;
+      transition: all 0.2s ease;
+    }
+    .btn-primary {
+      background: rgba(118, 138, 255, 0.2);
+      border: 1px solid rgba(118, 138, 255, 0.4);
+      color: #d3daff;
+    }
+    .btn-primary:hover {
+      background: rgba(118, 138, 255, 0.3);
+      border-color: rgba(118, 138, 255, 0.6);
+    }
+    .btn-success {
+      background: rgba(16, 185, 129, 0.2);
+      border: 1px solid rgba(16, 185, 129, 0.4);
+      color: #6ee7b7;
+    }
+    .btn-success:hover {
+      background: rgba(16, 185, 129, 0.3);
+      border-color: rgba(16, 185, 129, 0.6);
+    }
+    .btn-outline-light {
+      background: transparent;
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      color: #f2f4ff;
+    }
+    .btn-outline-light:hover {
+      background: rgba(255, 255, 255, 0.1);
+    }
+    .card {
+      background: rgba(15, 22, 43, 0.6);
+      border: 1px solid rgba(118, 138, 255, 0.25);
+      border-radius: 12px;
+      color: #f2f4ff;
+    }
+    .card-body {
+      padding: 1.2rem;
+    }
+    .badge {
+      padding: 0.4rem 0.8rem;
+      border-radius: 6px;
+      font-size: 0.85rem;
+    }
+    .badge.bg-secondary {
+      background: rgba(118, 138, 255, 0.2) !important;
+      color: #b7c1ff;
+      border: 1px solid rgba(118, 138, 255, 0.3);
+    }
+    .form-control {
+      background: rgba(12, 18, 38, 0.8);
+      border: 1px solid rgba(118, 138, 255, 0.3);
+      color: #f2f4ff;
+      border-radius: 8px;
+    }
+    .form-control:focus {
+      background: rgba(12, 18, 38, 0.9);
+      border-color: rgba(118, 138, 255, 0.6);
+      color: #f2f4ff;
+      box-shadow: 0 0 0 0.2rem rgba(118, 138, 255, 0.25);
+    }
+    .nav-tabs {
+      border-bottom: 1px solid rgba(118, 138, 255, 0.25);
+    }
+    .nav-tabs .nav-link {
+      color: #b7c1ff;
+      border: none;
+      border-bottom: 2px solid transparent;
+      border-radius: 0;
+    }
+    .nav-tabs .nav-link:hover {
+      color: #d3daff;
+      border-bottom-color: rgba(118, 138, 255, 0.4);
+    }
+    .nav-tabs .nav-link.active {
+      color: #e0e5ff;
+      border-bottom-color: rgba(118, 138, 255, 0.8);
+      background: transparent;
+    }
+    .alert {
+      border-radius: 8px;
+      border: 1px solid;
+    }
+    .alert-info {
+      background: rgba(79, 195, 247, 0.1);
+      border-color: rgba(79, 195, 247, 0.3);
+      color: #81d4fa;
+    }
+    .text-muted {
+      color: #7d88c7 !important;
+    }
+    .small {
+      font-size: 0.875rem;
+    }
+    h4, h5, h6 {
+      color: #e0e5ff;
+    }
+    h4 {
+      font-size: 1.5rem;
+      font-weight: 600;
+    }
+    h5 {
+      font-size: 1.25rem;
+      font-weight: 600;
+    }
+    h6 {
+      font-size: 1rem;
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+  <header class="top-banner">
+    <div style="display: flex; justify-content: space-between; align-items: flex-start; width: 100%; gap: 1.5rem; box-sizing: border-box;">
+      <div style="flex: 1; min-width: 0; display: flex; align-items: center; gap: 1.5rem;">
+        <h1 id="nbDataTitle" style="margin: 0; cursor: pointer; transition: opacity 0.2s ease;" onmouseover="this.style.opacity='0.8'" onmouseout="this.style.opacity='1'">📚 N/B 소설 관리 시스템 v1.0.7</h1>
+        <div id="userInfoDisplay" style="display: flex; align-items: center; gap: 1rem; padding: 0.5rem 1rem; background: rgba(12, 18, 38, 0.6); border: 1px solid rgba(118, 138, 255, 0.25); border-radius: 8px; font-size: 0.85rem;">
+          <div style="display: flex; align-items: center; gap: 0.5rem;">
+            <span style="color: #7d88c7; font-weight: 600;">IP BIT:</span>
+            <span id="displayPcIpBitMax" style="color: #9aa4d9; font-family: 'Fira Code', 'Roboto Mono', monospace;">-</span>
+            <span style="color: #6b75a8;">/</span>
+            <span id="displayPcIpBitMin" style="color: #9aa4d9; font-family: 'Fira Code', 'Roboto Mono', monospace;">-</span>
+          </div>
+          <div style="width: 1px; height: 20px; background: rgba(118, 138, 255, 0.2);"></div>
+          <div style="display: flex; align-items: center; gap: 0.5rem;">
+            <span style="color: #7d88c7; font-weight: 600;">닉네임:</span>
+            <span id="displayUserName" style="color: #9aa4d9;">-</span>
+          </div>
+        </div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 1rem; flex-shrink: 0;">
+        <button id="settingsBtn" class="btn btn-sm" style="background: rgba(118, 138, 255, 0.2); border: 1px solid rgba(118, 138, 255, 0.4); color: #d3daff; padding: 0.5rem 1rem; border-radius: 6px; cursor: pointer; transition: all 0.2s; font-weight: 500;">⚙️ 키 설정</button>
+        <div id="userInfoContainer" style="display: none; align-items: center; gap: 1rem;">
+          <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 0.3rem;">
+            <span id="userNameDisplay" style="font-weight: 600; color: #d3daff; font-size: 0.95rem;"></span>
+            <span id="userEmailDisplay" style="font-size: 0.85rem; color: #9aa4d9;"></span>
+          </div>
+          <button id="logoutBtn" class="btn btn-sm" style="background: rgba(255, 92, 92, 0.2); border: 1px solid rgba(255, 92, 92, 0.4); color: #ffc1c1; padding: 0.4rem 0.8rem; border-radius: 6px; cursor: pointer; transition: all 0.2s;">로그아웃</button>
+        </div>
+        <button id="naverLoginBtn" class="btn btn-sm" style="background: rgba(118, 138, 255, 0.2); border: 1px solid rgba(118, 138, 255, 0.4); color: #d3daff; padding: 0.5rem 1rem; border-radius: 6px; cursor: pointer; transition: all 0.2s; font-weight: 500; display: block;">
+          <img src="https://static.nid.naver.com/oauth/small_g_in.PNG" alt="네이버 로그인" style="height: 20px; vertical-align: middle; margin-right: 0.5rem;">
+          네이버 로그인
+        </button>
+      </div>
+      <div id="statusIndicator" style="display: flex; align-items: center; gap: 0.8rem; flex-shrink: 0; flex-wrap: wrap;">
+        <div style="display: flex; align-items: center; gap: 0.5rem; padding: 0.6rem 1rem; background: rgba(12, 18, 38, 0.85); border: 1px solid rgba(118, 138, 255, 0.3); border-radius: 8px; backdrop-filter: blur(4px);">
+          <div id="statusDot" style="width: 10px; height: 10px; border-radius: 50%; background: #9aa4d9; box-shadow: 0 0 8px rgba(154, 164, 217, 0.5); transition: all 0.3s ease; flex-shrink: 0;"></div>
+          <span id="statusText" style="font-size: 0.85rem; color: #9aa4d9; font-weight: 600; white-space: nowrap;">대기 중</span>
+          <span id="statusDetail" style="font-size: 0.75rem; color: #7d88c7; opacity: 0.8; white-space: nowrap;">시스템 준비됨</span>
+        </div>
+        <div id="saveStatus" style="display: flex; align-items: center; gap: 0.5rem; padding: 0.6rem 1rem; background: rgba(12, 18, 38, 0.7); border: 1px solid rgba(118, 138, 255, 0.2); border-radius: 8px;">
+          <span style="font-size: 0.7rem; color: #7d88c7; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; white-space: nowrap;">저장</span>
+          <div id="saveDot" style="width: 8px; height: 8px; border-radius: 50%; background: #7d88c7; box-shadow: 0 0 6px rgba(125, 136, 199, 0.4); transition: all 0.3s ease; flex-shrink: 0;"></div>
+          <span id="saveText" style="font-size: 0.8rem; color: #9aa4d9; white-space: nowrap;">대기 중</span>
+          <span id="saveTime" style="font-size: 0.7rem; color: #6b75a8; font-family: 'Fira Code', 'Roboto Mono', monospace; white-space: nowrap;">-</span>
+        </div>
+        <div id="fetchStatus" style="display: flex; align-items: center; gap: 0.5rem; padding: 0.6rem 1rem; background: rgba(12, 18, 38, 0.7); border: 1px solid rgba(118, 138, 255, 0.2); border-radius: 8px;">
+          <span style="font-size: 0.7rem; color: #7d88c7; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; white-space: nowrap;">조회</span>
+          <div id="fetchDot" style="width: 8px; height: 8px; border-radius: 50%; background: #7d88c7; box-shadow: 0 0 6px rgba(125, 136, 199, 0.4); transition: all 0.3s ease; flex-shrink: 0;"></div>
+          <span id="fetchText" style="font-size: 0.8rem; color: #9aa4d9; white-space: nowrap;">대기 중</span>
+          <span id="fetchTime" style="font-size: 0.7rem; color: #6b75a8; font-family: 'Fira Code', 'Roboto Mono', monospace; white-space: nowrap;">-</span>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <div class="test-wrapper">
+    <aside class="test-sidebar" id="testSidebar">
+      <h3>내 소설 목록</h3>
+      <div id="novelTree" class="tree-view" style="margin-bottom: 1rem;">
+        <div class="text-muted small">소설을 선택하거나 새로 생성하세요.</div>
+      </div>
+      <button class="btn btn-primary w-100" id="newNovelBtn" style="padding: 0.6rem; font-size: 0.9rem;">
+        * 새 소설 만들기
+      </button>
+      
+      <!-- 로그인 정보 입력 (숨김) -->
+      <div class="mb-3" id="loginInfoContainer" style="display: none; margin-top: 1rem;">
+        <label class="form-label small">로그인 정보</label>
+        <input type="text" id="loginInfo" class="form-control form-control-sm" placeholder="사용자명/IP">
+      </div>
+    </aside>
+    
+    <div class="test-resizer" id="testResizer"></div>
+    <div class="test-overlay" id="testOverlay"></div>
+    
+    <div class="layout-shell">
+      <div class="pane">
+        <!-- 현재 소설 정보 헤더 -->
+        <div id="currentNovelHeader" class="mb-4" style="display: none;">
+          <div class="pane-header">
+            <span class="bullet"></span>
+            현재 소설
+          </div>
+          <h4 class="mb-2">현재 소설: <span id="currentNovelTitle">-</span></h4>
+          <div class="mb-3">
+            <small class="text-muted">장르 태그: </small>
+            <span id="currentNovelGenres" class="badge bg-secondary me-1">-</span>
+          </div>
+        </div>
+
+        <!-- 메뉴 네비게이션 (숨김, 사이드바에서 처리) -->
+        <div class="mb-3" id="novelMenuNav" style="display: none;">
+          <div class="d-flex flex-wrap gap-2">
+            <button class="btn btn-sm btn-outline-primary active" data-menu="info">📖 소설 메인 정보</button>
+            <button class="btn btn-sm btn-outline-secondary" data-menu="summary">📝 줄거리 요약</button>
+            <button class="btn btn-sm btn-outline-secondary" data-menu="characters">👥 등장인물 목록</button>
+            <button class="btn btn-sm btn-outline-secondary" data-menu="events">⚡ 주요 사건</button>
+            <button class="btn btn-sm btn-outline-secondary" data-menu="items">🎒 아이템</button>
+            <button class="btn btn-sm btn-outline-secondary" data-menu="background">🌍 배경</button>
+            <button class="btn btn-sm btn-outline-secondary" data-menu="level">📊 레벨 시스템</button>
+            <button class="btn btn-sm btn-outline-secondary" data-menu="bit">🔢 전체 BIT 구조</button>
+            <button class="btn btn-sm btn-outline-secondary" data-menu="relation">🔗 관계도</button>
+          </div>
+        </div>
+
+        <!-- 탭 컨텐츠 -->
+        <div class="tab-content" id="mainTabContent">
+          <!-- 새 소설 만들기 -->
+          <div class="tab-pane fade" id="newNovel-pane" role="tabpanel">
+            <div class="pane-group-title">좌측: 입력·저장 / 우측: 데이터 상태</div>
+            <div class="layout-group row g-4 flex-column flex-lg-row">
+              <section class="pane left-pane col-12 col-lg-6">
+                <div class="pane-header"><span class="bullet"></span>입력 · 저장 영역</div>
+                <h1>수동 입력</h1>
+                <p class="description">
+                  속성과 데이터를 입력하면 BIT 계산과 자동 저장이 즉시 실행됩니다.
+                  저장된 기록은 오른쪽 목록에서 확인하고 다시 불러올 수 있습니다.
+                </p>
+                
+                <!-- 소설 제목 -->
+                <div class="field">
+                  <label for="newNovelTitleInput">소설 제목</label>
+                  <input id="newNovelTitleInput" type="text" placeholder="예: 다크 판타지" autocomplete="off">
+                  <small style="color: #9aa4d9; font-size: 0.88rem; margin-top: 0.5rem;">소설 제목을 입력하면 자동으로 조회됩니다.</small>
+                </div>
+                
+                <!-- 속성 경로 (N/B) -->
+                <div class="field">
+                  <label for="newNovelAttributePathInput">속성 경로 (N/B)</label>
+                  <input id="newNovelAttributePathInput" type="text" placeholder="예: 네이버 닉네임 → 호떡 → 다크 판타지" autocomplete="off">
+                  <small style="color: #9aa4d9; font-size: 0.88rem; margin-top: 0.5rem;">속성 경로를 입력하면 최상위 경로와 속성 경로가 자동으로 분리됩니다.</small>
+                </div>
+                
+                <!-- 최상위 경로 -->
+                <div class="field mt-4">
+                  <label for="newNovelTopPathInput">최상위 경로</label>
+                  <input id="newNovelTopPathInput" type="text" readonly style="background: rgba(23, 30, 58, 0.5); color: #9aa4d9;">
+                  <small style="color: #9aa4d9; font-size: 0.88rem; margin-top: 0.5rem;">속성 경로에서 자동으로 추출됩니다.</small>
+                </div>
+                <div class="field mt-2">
+                  <label for="newNovelTopDataInput">데이터 입력 (최상위 경로)</label>
+                  <textarea id="newNovelTopDataInput" placeholder="최상위 경로에 대한 데이터를 입력하세요."></textarea>
+                </div>
+                <div class="bit-display">
+                  <div class="bit-card">
+                    <strong>BIT MAX</strong>
+                    <span id="newNovelTopMaxOutput">-</span>
+                  </div>
+                  <div class="bit-card">
+                    <strong>BIT MIN</strong>
+                    <span id="newNovelTopMinOutput">-</span>
+                  </div>
+                </div>
+                
+                <!-- 속성 경로 -->
+                <div class="field mt-4">
+                  <label for="newNovelAttributePathDisplay">속성 경로</label>
+                  <input id="newNovelAttributePathDisplay" type="text" readonly style="background: rgba(23, 30, 58, 0.5); color: #9aa4d9;">
+                  <small style="color: #9aa4d9; font-size: 0.88rem; margin-top: 0.5rem;">입력한 속성 경로 전체입니다.</small>
+                </div>
+                <div class="field mt-2">
+                  <label for="newNovelAttributeDataInput">데이터 입력 (속성 경로)</label>
+                  <textarea id="newNovelAttributeDataInput" placeholder="속성 경로에 대한 데이터를 입력하세요."></textarea>
+                </div>
+                <div class="bit-display">
+                  <div class="bit-card">
+                    <strong>BIT MAX</strong>
+                    <span id="newNovelAttributeMaxOutput">-</span>
+                  </div>
+                  <div class="bit-card">
+                    <strong>BIT MIN</strong>
+                    <span id="newNovelAttributeMinOutput">-</span>
+                  </div>
+                </div>
+                
+                <!-- 결과 표시 -->
+                <div class="result-card mt-4">
+                  <strong>마지막 저장 결과</strong>
+                  <div id="newNovelResultContent" class="result-body">속성과 데이터를 모두 입력하면 저장 정보가 표시됩니다.</div>
+                </div>
+                
+                <!-- 로그 -->
+                <div class="log mt-4 mt-lg-5" id="newNovelLog"></div>
+              </section>
+
+              <section class="pane right-pane col-12 col-lg-6">
+                <div class="pane-header"><span class="bullet"></span>데이터 조회 · 폴더 현황</div>
+                
+                <!-- 최상위 경로 데이터 -->
+                <h2>최상위 경로 데이터</h2>
+                <div class="action-controls">
+                  <span class="hint">현재 입력한 최상위 경로와 동일한 레코드를 즉시 삭제합니다.</span>
+                  <button type="button" id="deleteCurrentTopPathButton">최상위 경로 데이터 삭제</button>
+                </div>
+                <div class="data-columns">
+                  <div class="data-column">
+                    <h3>MAX 폴더</h3>
+                    <div class="data-list" id="newNovelTopDataListMax">
+                      <span style="color:#9aa4d9;">저장된 데이터가 여기 표시됩니다.</span>
+                    </div>
+                    <div class="column-log" id="newNovelTopLogMax">─</div>
+                    <div class="column-folders">
+                      <h4>폴더 경로</h4>
+                      <div class="folder-list" id="newNovelTopFoldersMax">
+                        <div class="folder-item">
+                          <span class="label">폴더 정보를 불러오는 중...</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="data-column">
+                    <h3>MIN 폴더</h3>
+                    <div class="data-list" id="newNovelTopDataListMin">
+                      <span style="color:#9aa4d9;">저장된 데이터가 여기 표시됩니다.</span>
+                    </div>
+                    <div class="column-log" id="newNovelTopLogMin">─</div>
+                    <div class="column-folders">
+                      <h4>폴더 경로</h4>
+                      <div class="folder-list" id="newNovelTopFoldersMin">
+                        <div class="folder-item">
+                          <span class="label">폴더 정보를 불러오는 중...</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                
+                <!-- 속성 경로 데이터 -->
+                <h2 class="mt-5">속성 경로 데이터</h2>
+                <div class="action-controls">
+                  <span class="hint">현재 입력한 속성 경로와 동일한 레코드를 즉시 삭제합니다.</span>
+                  <button type="button" id="deleteCurrentAttributePathButton">속성 경로 데이터 삭제</button>
+                </div>
+                <div class="data-columns">
+                  <div class="data-column">
+                    <h3>MAX 폴더</h3>
+                    <div class="data-list" id="newNovelAttributeDataListMax">
+                      <span style="color:#9aa4d9;">저장된 데이터가 여기 표시됩니다.</span>
+                    </div>
+                    <div class="column-log" id="newNovelAttributeLogMax">─</div>
+                    <div class="column-folders">
+                      <h4>폴더 경로</h4>
+                      <div class="folder-list" id="newNovelAttributeFoldersMax">
+                        <div class="folder-item">
+                          <span class="label">폴더 정보를 불러오는 중...</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="data-column">
+                    <h3>MIN 폴더</h3>
+                    <div class="data-list" id="newNovelAttributeDataListMin">
+                      <span style="color:#9aa4d9;">저장된 데이터가 여기 표시됩니다.</span>
+                    </div>
+                    <div class="column-log" id="newNovelAttributeLogMin">─</div>
+                    <div class="column-folders">
+                      <h4>폴더 경로</h4>
+                      <div class="folder-list" id="newNovelAttributeFoldersMin">
+                        <div class="folder-item">
+                          <span class="label">폴더 정보를 불러오는 중...</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </section>
+            </div>
+          </div>
+
+          <!-- 소설 메인 정보 탭 -->
+          <div class="tab-pane fade show active" id="info-pane" role="tabpanel">
+            <div id="novelInfoContainer">
+              <div class="text-muted text-center py-5">
+                소설을 선택하면 메인 정보가 표시됩니다.
+              </div>
+            </div>
+          </div>
+
+          <!-- 속성 편집 탭 -->
+          <div class="tab-pane fade" id="attributes-pane" role="tabpanel">
+            <!-- 현재 경로 표시 -->
+            <div class="alert alert-info mb-3" id="currentPath">
+              <small>경로: 선택된 항목이 없습니다.</small>
+            </div>
+
+            <!-- 속성 입력란 컨테이너 -->
+            <div id="attributeInputs">
+              <div class="text-muted text-center py-5">
+                소설과 챕터를 선택하면 속성 입력란이 표시됩니다.
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 하단: 로그창 -->
+  <footer style="position: fixed; bottom: 0; left: 0; right: 0; height: 200px; background: rgba(8, 11, 22, 0.95); border-top: 1px solid rgba(118, 138, 255, 0.25); padding: 1rem; z-index: 99; margin-left: 284px; transition: margin-left 0.2s ease;">
+    <div class="row g-3" style="height: 100%;">
+      <!-- 수동 입력 로그 -->
+      <div class="col-6" style="display: flex; flex-direction: column; height: 100%;">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <h6 class="mb-0" style="color: #e0e5ff;">수동 입력 로그</h6>
+          <button class="btn btn-sm btn-secondary" id="clearManualLogBtn" style="background: rgba(118, 138, 255, 0.2); border: 1px solid rgba(118, 138, 255, 0.4); color: #d3daff;">로그 지우기</button>
+        </div>
+        <div id="manualLogContainer" class="log-container" style="flex: 1; overflow-y: auto;">
+          <div class="log-entry text-muted">시스템이 준비되었습니다.</div>
+        </div>
+      </div>
+      
+      <!-- 최상위 경로 데이터 로그 -->
+      <div class="col-6" style="display: flex; flex-direction: column; height: 100%;">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <h6 class="mb-0" style="color: #e0e5ff;">최상위 경로 데이터 로그</h6>
+          <button class="btn btn-sm btn-secondary" id="clearTopPathLogBtn" style="background: rgba(118, 138, 255, 0.2); border: 1px solid rgba(118, 138, 255, 0.4); color: #d3daff;">로그 지우기</button>
+        </div>
+        <div id="topPathLogContainer" class="log-container" style="flex: 1; overflow-y: auto;">
+          <div class="log-entry text-muted">시스템이 준비되었습니다.</div>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <!-- 키 설정 모달 -->
+  <div id="settingsModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.75); z-index: 10001; align-items: center; justify-content: center; overflow-y: auto; padding: 2rem 0;">
+    <div style="background: linear-gradient(135deg, rgba(18, 24, 46, 0.98), rgba(12, 18, 38, 0.98)); border: 1px solid rgba(118, 138, 255, 0.3); border-radius: 16px; padding: 2.5rem; max-width: 800px; width: 90%; max-height: 90vh; overflow-y: auto; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5); margin: auto;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+        <h2 style="margin: 0; color: #f2f4ff; font-size: 1.5rem; font-weight: 700;">키 설정</h2>
+        <button id="closeSettingsModal" style="background: none; border: none; color: #9aa4d9; font-size: 1.8rem; cursor: pointer; padding: 0.5rem; line-height: 1; transition: color 0.2s ease;">&times;</button>
+      </div>
+      
+      <!-- GPT API 키 설정 -->
+      <div style="margin-bottom: 2.5rem;">
+        <h3 style="margin: 0 0 1rem 0; color: #e0e5ff; font-size: 1.2rem; font-weight: 600;">GPT API 키</h3>
+        <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+          <div>
+            <label style="display: block; margin-bottom: 0.5rem; color: #9aa4d9; font-size: 0.9rem; font-weight: 500;">OpenAI API Key</label>
+            <input type="password" id="gptApiKeyInput" placeholder="sk-..." style="width: 100%; padding: 0.75rem; background: rgba(12, 18, 38, 0.8); border: 1px solid rgba(118, 138, 255, 0.3); border-radius: 8px; color: #f2f4ff; font-size: 0.95rem; font-family: 'Fira Code', 'Roboto Mono', monospace;">
+          </div>
+          <button id="saveGptKeyBtn" style="width: 100%; padding: 0.75rem; background: rgba(118, 138, 255, 0.2); border: 1px solid rgba(118, 138, 255, 0.4); border-radius: 8px; color: #d3daff; font-size: 0.95rem; font-weight: 500; cursor: pointer; transition: all 0.2s;">저장</button>
+        </div>
+      </div>
+      
+      <!-- OAuth 설정 -->
+      <div>
+        <h3 style="margin: 0 0 1.5rem 0; color: #e0e5ff; font-size: 1.2rem; font-weight: 600;">OAuth 설정</h3>
+        
+        <!-- Naver OAuth -->
+        <div style="margin-bottom: 2rem; padding: 1.5rem; background: rgba(12, 18, 38, 0.5); border: 1px solid rgba(3, 199, 90, 0.2); border-radius: 12px;">
+          <h4 style="margin: 0 0 1rem 0; color: #03c75a; font-size: 1rem; font-weight: 600; display: flex; align-items: center; gap: 0.5rem;">
+            <span>🟢</span>
+            <span>Naver</span>
+          </h4>
+          <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+            <div>
+              <label style="display: block; margin-bottom: 0.5rem; color: #9aa4d9; font-size: 0.85rem;">Client ID</label>
+              <input type="text" id="naverClientId" placeholder="Naver Client ID" style="width: 100%; padding: 0.75rem; background: rgba(12, 18, 38, 0.8); border: 1px solid rgba(3, 199, 90, 0.3); border-radius: 8px; color: #f2f4ff; font-size: 0.9rem;">
+            </div>
+            <div>
+              <label style="display: block; margin-bottom: 0.5rem; color: #9aa4d9; font-size: 0.85rem;">Client Secret</label>
+              <input type="password" id="naverClientSecret" placeholder="Naver Client Secret" style="width: 100%; padding: 0.75rem; background: rgba(12, 18, 38, 0.8); border: 1px solid rgba(3, 199, 90, 0.3); border-radius: 8px; color: #f2f4ff; font-size: 0.9rem;">
+            </div>
+            <div>
+              <label style="display: block; margin-bottom: 0.5rem; color: #9aa4d9; font-size: 0.85rem;">Redirect URI</label>
+              <input type="text" id="naverRedirectUri" placeholder="http://127.0.0.1:8123/api/auth/naver/callback" style="width: 100%; padding: 0.75rem; background: rgba(12, 18, 38, 0.8); border: 1px solid rgba(3, 199, 90, 0.3); border-radius: 8px; color: #f2f4ff; font-size: 0.9rem; font-family: 'Fira Code', 'Roboto Mono', monospace;">
+            </div>
+          </div>
+        </div>
+        
+        <button id="saveOAuthConfigBtn" style="width: 100%; padding: 0.9rem; background: rgba(118, 138, 255, 0.2); border: 1px solid rgba(118, 138, 255, 0.4); border-radius: 8px; color: #d3daff; font-size: 1rem; font-weight: 600; cursor: pointer; transition: all 0.2s;">OAuth 설정 저장</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- GPT 모델 선택 모달 -->
+  <div class="modal fade" id="gptModal" tabindex="-1">
+    <div class="modal-dialog">
+      <div class="modal-content" style="background: rgba(12, 18, 38, 0.98); border: 1px solid rgba(118, 138, 255, 0.3); color: #f2f4ff;">
+        <div class="modal-header" style="border-bottom: 1px solid rgba(118, 138, 255, 0.2);">
+          <h5 class="modal-title">GPT 모델 선택</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <select id="gptModel" class="form-select">
+            <option value="gpt-4o">GPT-4o</option>
+            <option value="gpt-4o-mini">GPT-4o-mini</option>
+            <option value="gpt-4-turbo">GPT-4-turbo</option>
+            <option value="gpt-4">GPT-4</option>
+          </select>
+        </div>
+        <div class="modal-footer" style="border-top: 1px solid rgba(118, 138, 255, 0.2);">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+          <button type="button" class="btn btn-primary" id="confirmGptBtn">확인</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="../../bit_worker.js"></script>
+  <script src="assets/js/config.js"></script>
+  <script src="assets/js/novel_ai_shared.js"></script>
+  <script src="assets/js/novelInfo.js"></script>
+  <script src="assets/js/attributeEditor.js"></script>
+  <script src="assets/js/app.js"></script>
+  <script>
+    // 사이드바 토글 기능
+    const sidebar = document.getElementById('testSidebar');
+    const overlay = document.getElementById('testOverlay');
+    const toggleBtn = document.createElement('button');
+    toggleBtn.className = 'test-toggle-btn';
+    toggleBtn.textContent = '☰ 메뉴';
+    toggleBtn.onclick = () => {
+      sidebar.classList.toggle('open');
+      overlay.classList.toggle('open');
+    };
+    overlay.onclick = () => {
+      sidebar.classList.remove('open');
+      overlay.classList.remove('open');
+    };
+    document.body.appendChild(toggleBtn);
+
+    // 사이드바 리사이즈 기능
+    let isResizing = false;
+    const resizer = document.getElementById('testResizer');
+    const container = document.querySelector('.layout-shell');
+    const footer = document.querySelector('footer');
+    
+    if (resizer && sidebar && container) {
+      resizer.addEventListener('mousedown', (e) => {
+        isResizing = true;
+        resizer.classList.add('dragging');
+        document.addEventListener('mousemove', handleResize);
+        document.addEventListener('mouseup', stopResize);
+      });
+      
+      function handleResize(e) {
+        if (!isResizing) return;
+        const newWidth = Math.max(200, Math.min(600, e.clientX));
+        sidebar.style.width = `${newWidth}px`;
+        resizer.style.left = `${newWidth}px`;
+        container.style.marginLeft = `${newWidth + 4}px`;
+        if (footer) footer.style.marginLeft = `${newWidth + 4}px`;
+      }
+      
+      function stopResize() {
+        isResizing = false;
+        resizer.classList.remove('dragging');
+        document.removeEventListener('mousemove', handleResize);
+        document.removeEventListener('mouseup', stopResize);
+      }
+    }
+
+    // 사용자 BIT 표시 업데이트
+    function updateUserBitDisplay() {
+      const userBit = document.getElementById('userBit');
+      const userBitDisplay = document.getElementById('userBitDisplay');
+      if (userBit && userBitDisplay) {
+        const text = userBit.textContent;
+        if (text && text.includes('BIT:')) {
+          const bitMatch = text.match(/BIT:\s*([\d.]+)\s*\/\s*([\d.]+)/);
+          if (bitMatch) {
+            userBitDisplay.textContent = `${bitMatch[1]} / ${bitMatch[2]}`;
+          }
+        }
+      }
+    }
+    setInterval(updateUserBitDisplay, 1000);
+
+    // 푸터 마진 조정
+    if (window.innerWidth >= 992) {
+      if (footer) footer.style.marginLeft = '284px';
+    } else {
+      if (footer) footer.style.marginLeft = '0';
+    }
+    window.addEventListener('resize', () => {
+      if (window.innerWidth >= 992) {
+        if (footer) footer.style.marginLeft = `${sidebar.offsetWidth + 4}px`;
+      } else {
+        if (footer) footer.style.marginLeft = '0';
+      }
+    });
+  </script>
+</body>
+</html>
